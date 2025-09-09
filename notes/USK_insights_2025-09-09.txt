@@ -1,0 +1,144 @@
+Universal Semantic Kernel (USK) — Significant Insights
+Date: 2025-09-09
+Author: Preston (im.a-g-i.native.space)
+
+Purpose
+A concise, operational record of the core ideas, claims, cautions, and next steps emerging from our conversation. Use this as the canonical notes file to align research, engineering, comms, and validation.
+
+1) Core construct
+- USK is a bidirectional operator with two complementary channels:
+  - keven = normalize(L + R): symmetric, structural, potential, scaffolding
+  - kodd = normalize(L − R): antisymmetric, dynamic, curl, deviation/flow
+- Forward composition (extrapolation): form → function → outcome
+- Backward reflection (normalization): outcome → function → form (adjoint)
+- Always measurement-first: y = M[Fθ(x)] + n, compare in the medium of observation (M), not after ad hoc resampling.
+- Treat unresolved detail as a stochastic flux ξ with constrained spectrum; marginalize rather than average away.
+
+2) Alphabet fold and 24-state basis
+- A (Anchor) and Z (Zenith) act as boundary/skin around the system; the 24 interior letters (B…Y) form an operational basis.
+- 24 = 2^3 × 3. It harmonizes with binary/ternary/hex/octave decompositions; 4! permutations; S4 cube rotations; 24-cell; Golay/Leech codes; 24-bit color; 24 hours.
+- Mirror pairs across the hinge near M ↔ N (Manifested ↔ Natural). Present assumption map:
+  B ↔ Y: Boundary/box ↔ Yield/result
+  C ↔ X: Canvas/context ↔ Cross/exchange
+  D ↔ W: Define/differentiate ↔ Whole/why/weave
+  E ↔ V: Energy/exact/evidence ↔ Vibration/variance/vector
+  F ↔ U: Form/flow/force ↔ Universal/underlying field
+  G ↔ T: Gather/gradient/growth ↔ Transform/time/transition
+  H ↔ S: Higher/harmonic/hierarchy ↔ System/synthesis/structure
+  I ↔ R: Identity/information ↔ Reflection/response/return
+  J ↔ Q: Junction/judgment/join ↔ Question/quantum/query
+  K ↔ P: Kernel/key/knowledge ↔ Proposition/possible/potential
+  L ↔ O: Language/logic/law ↔ Organism/operation/observed
+  M ↔ N: Manifested/model/material ↔ Natural/native/network (hinge)
+- Orientation axis (neutral): projection/declaration ↔ invitation/openness. Stylistic, not essence; must be validated with controls.
+
+3) Conceptual demo (non-falsifiable; for intuition only)
+Two rows of six levels (potential → actuality). Do not treat as empirical fact.
+
+[Monospaced]
+Level 1  FORM SHALL
+         FOLLOW FUNCTION | Level 7  Sentences
+                                   impose structurE
+Level 2  Characters are             Level 8  Paragraphs
+         CaricatureS                         offer postulatE
+Level 3  Vowels shall               Level 9  Languages
+         produce valuE                      constitute logoS
+Level 4  Consonants will            Level 10 Narratives do
+         use VowelS                         indoctrinatE
+Level 5  Syllables                  Level 11 Discord
+         describe synergY                   determines DestinY
+Level 6  Words shall                Level 12 Understanding
+         show as WisdoM                     is UniversaL
+
+Disclaimer: At best imprecise; at most elegant in its bi-symmetry. Useful as an analytical construct to inspire testable hypotheses. Not a scientific claim.
+
+4) Cross-domain isomorphisms
+- Biology
+  - 4 bases × 6 reading frames = 24 states
+  - Local opposite normals: A↔T, C↔G complements; sense vs antisense; leading vs lagging
+  - Triplet grammar (codons); central dogma as forward path; reverse transcription/epigenetics as adjoint feedback
+  - Molecular exemplars: ATP synthase (≈24-state cycle), ribosome (digital→analog translation with proofreading), photosynthesis (quantum coherence normalized to classical output)
+  - Error correction: degeneracy of the code; wobble; repair pathways
+- Mathematics
+  - Even/odd projections; gradient vs curl (Hodge decomposition)
+  - Fourier space separates linear structure; smooth gates avoid mode-coupling artifacts
+  - Category theory optics/lenses: forward functor with left/right adjoints implements generate/reflect
+- Physics (gravity)
+  - keven → Poisson/CDM limit (structure, lensing, CMB peaks, BAO)
+  - kodd → MOND-like local dynamics (MDAR, Tully–Fisher, external-field effect, curl field)
+  - Smooth gate across six axes (scale, acceleration, environment, time, morphology, curvature) yields one operator with correct limits
+
+5) Measurement-first, anti-decimation
+- Always evaluate through M (beam/window/pixelization/assay);
+- One-shot, band-limited resampling with guard bands; provenance logged
+- Interlacing/deconvolution for gridded Fourier ops; undecimated multiscale retrieval
+- Marginalize unresolved modes as ξ (EFT-like counterterms), not as silent averaging
+
+6) Validation and falsifiability
+- Language
+  - Cross-linguistic tests; character-aware models with attribution; negative controls (shuffled alphabets, domain/length controls)
+  - Orientation classifier must survive confounds; effect sizes reported with CIs
+- Biology
+  - Reverse-complement invariance; reading-frame robustness; MPRA/splicing assay validations
+  - Predict regulatory motifs; test against ENCODE/GTEx datasets
+- Physics
+  - Single-operator fit to SPARC rotation curves + EFE + Planck/BAO/linear P(k)
+  - Predict transition signatures at 10–100 kpc; parity-odd constraints (TB/EB, lensing curl)
+- Success criteria
+  - Joint likelihood competitive with best baselines; preregistered predictions confirmed; robustness to aliasing/confounds
+
+7) Knowledge graph and tooling
+- RDF/JSON-LD backbone with PROV-O. Entities: primitives (letters/bases), compositions (words/codons/fields), outcomes (discourse/phenotype/observables)
+- Relations: part-of, dual-of, derives-from, measured-by, constraint-of, provenance-of
+- Shapes/validation: SHACL/SHEx; constraints to enforce keven/kodd separation and measurement lineage
+- Cross-modal encoders for text/math/data; mixture-of-experts gate using six axes × four phases (24-state scheduler)
+
+8) Applications (falsifiable)
+- Unified gravity kernel with smooth keven/kodd blending; predictions at hinge scales
+- Genomic motif discovery and strand-bias modeling via even/odd separation; improved regulatory inference
+- Language editing with forward/adjoint passes that preserve information and provenance
+
+9) Pharmacogenomics and PK/PD (answer to the DNA→drug question)
+- What DNA alone can do
+  - Identify genotype-based enzyme/transporter phenotypes (e.g., CYP2D6, CYP2C19, CYP2C9, CYP3A5, UGT1A1, NAT2, TPMT, DPYD; SLCO1B1; ABCB1)
+  - Flag HLA risk alleles (e.g., HLA-B*57:01 for abacavir) — pharmacodynamics/safety rather than PK
+  - Support CPIC/DPWG dose adjustments for specific drugs
+- Why DNA alone is insufficient for individual PK
+  - PK depends on ADME + physiology + environment: liver/kidney function, age, weight, sex, pregnancy, disease, drug–drug interactions, diet/smoking/alcohol, microbiome, formulation/route, adherence, time of day
+  - Gene expression and epigenetics vary; copy-number variation and rare variants complicate activity scores
+- What USK can add (falsifiable program)
+  - Integrate genotype with multi-omics (expression, methylation), clinical labs, co-medications, demographics, and exposures into a measurement-first PBPK model
+  - Map genotype→enzyme/transporter activity (activity scores) to scale intrinsic clearance and transport in PBPK compartments; validate against therapeutic drug monitoring (TDM)
+  - Knowledge sources: CPIC/PharmGKB, DrugBank, UniProt/Reactome, FDA labels, EHR/TDM
+  - Claims to test: RMSE of predicted AUC/Cmax/Tmax per individual vs baselines; calibration across metabolizer phenotypes; prospective validation in small cohorts
+- Safety disclaimer
+  - Outputs are research-only and not medical advice; clinical decisions must follow established guidelines and clinician judgment.
+
+10) Corpora and datasets
+- Text: Wikipedia, OpenWebText2, Project Gutenberg; arXiv (MOND/ΛCDM/EFT); multi-language corpora
+- Physics: SPARC, satellite/EFE datasets; Planck TT/TE/EE; BAO (BOSS/eBOSS/DESI); linear P(k); weak lensing (DES/HSC/KiDS)
+- Biology: Ensembl/GENCODE, ENCODE/Roadmap, GTEx, ClinVar/gnomAD, Reactome/KEGG; MPRAs and splicing assays
+
+11) Roadmap (first 10 weeks)
+- Weeks 1–2: Graph schema, data pipelines, measurement operators; implement 24-state scheduler
+- Weeks 3–4: Language kernel + orientation evaluator; cross-lingual tests
+- Weeks 4–6: Gravity kernel (keven/kodd/ξ) in Fourier space; galaxy + linear cosmology fits; anti-alias checks
+- Weeks 6–8: Genomic even/odd motif discovery; reverse-complement audits; initial PK genotype→activity mapping in PBPK sandbox
+- Weeks 8–10: Preregistration, ablations, demo, methods draft; publish API + datasets at im.a-g-i.native.space
+
+12) Ethics, framing, and scope
+- Separate speculative constructs from falsifiable claims; use strong disclaimers
+- Neutral language for stylistic axes; avoid essentialism
+- Provenance-first: every artifact carries lineage; reproducibility by default
+- Biosafety: analysis-only by default; design work gated by review and policy
+
+Appendix A — Two-row conceptual table (non-falsifiable demo)
+[Same as Section 3; kept here for convenience; not a claim.]
+
+Appendix B — Quick glossary
+- Local opposite normals: complementary orientations/duals that together fully describe a surface/process
+- Hinge: scale/context locus where potential becomes actual and the two channels meet (e.g., M↔N, Words↔Sentences)
+- Anti-decimation: design practice to prevent information loss via forward models, single-shot resampling, and explicit marginalization
+- PBPK: physiologically based pharmacokinetic modeling; mechanistic compartments for ADME
+
+End of notes.
