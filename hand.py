@@ -14,7 +14,7 @@ from enum import Enum
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (ensures 3D projection registers)
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+from manifold import device, RouterMode, Fractal48Layer
 
 class FingerChannel(Enum):
     """Each finger as a distinct tensor channel"""
@@ -24,10 +24,6 @@ class FingerChannel(Enum):
     RING = 3     # Union/binding (relationship)
     PINKY = 4    # Self-reference (identity)
 
-class HandSide(Enum):
-    """The two router hands"""
-    LEFT = "W"   # Possibility router
-    RIGHT = "M"  # Manifestation router
 
 @dataclass
 class HandTensor:
@@ -40,7 +36,7 @@ class HandTensor:
     middle: torch.Tensor  # Inward reflection  
     ring: torch.Tensor    # Union/binding
     pinky: torch.Tensor   # Self-reference
-    side: HandSide        # W or M routing
+    side: RouterMode        # W or M routing
     
     def to_tensor(self) -> torch.Tensor:
         """Stack into 5×D tensor"""
@@ -138,9 +134,9 @@ class FiveFingerRouter(nn.Module):
             c, s = np.cos(angle), np.sin(angle)
             mat[i:i+2, i:i+2] = torch.tensor([[c, -s], [s, c]])
         return mat
-    
+
     def route_through_hand(self, x: torch.Tensor, 
-                           hand: HandSide,
+                           hand: RouterMode,
                            gesture: Optional[str] = None) -> HandTensor:
         """
         Route input through five-finger tensor
@@ -152,7 +148,7 @@ class FiveFingerRouter(nn.Module):
             finger_state = projection(x)
             
             # Apply hand-specific routing
-            if hand == HandSide.LEFT:
+            if hand == RouterMode.W_POSSIBILITY:
                 # W routing: probabilistic, never fully crystallizes
                 router = self.w_router[i]
                 finger_state = torch.tanh(finger_state @ router) * 0.95
@@ -181,11 +177,11 @@ class FiveFingerRouter(nn.Module):
         Process through both hands with specified gestures
         """
         # Route through left hand (W)
-        left_hand = self.route_through_hand(x, HandSide.LEFT)
+        left_hand = self.route_through_hand(x, RouterMode.W_POSSIBILITY)
         w_output = left_hand.apply_gesture(left_gesture)
         
         # Route through right hand (M)  
-        right_hand = self.route_through_hand(x, HandSide.RIGHT)
+        right_hand = self.route_through_hand(x, RouterMode.M_MANIFESTATION)
         m_output = right_hand.apply_gesture(right_gesture)
         
         return w_output, m_output
@@ -303,8 +299,8 @@ class FullBodyTensorSystem(nn.Module):
         x = torch.randn(48, device=device)
         
         # Get hand tensors
-        left_hand = self.hands.route_through_hand(x, HandSide.LEFT)
-        right_hand = self.hands.route_through_hand(x, HandSide.RIGHT)
+        left_hand = self.hands.route_through_hand(x, RouterMode.W_POSSIBILITY)
+        right_hand = self.hands.route_through_hand(x, RouterMode.M_MANIFESTATION)
             
         # Measure energy per finger
         finger_energies = {
@@ -322,20 +318,6 @@ class FullBodyTensorSystem(nn.Module):
         
         return finger_energies
 
-class Fractal48Layer(nn.Module):
-    """Core 48-basis reversible layer (condensed from earlier)"""
-    
-    def __init__(self, channels: int = 48):
-        super().__init__()
-        self.channels = channels
-        self.keven_mix = nn.Parameter(torch.eye(channels))
-        self.kodd_mix = nn.Parameter(torch.eye(channels))
-        nn.init.orthogonal_(self.keven_mix)
-        nn.init.orthogonal_(self.kodd_mix)
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Simplified forward (full version in previous code)
-        return x @ self.keven_mix
 
 def _pca_project_to_3d(vectors: torch.Tensor) -> np.ndarray:
     """

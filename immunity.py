@@ -17,10 +17,11 @@ import click
 import statistics
 import csv
 
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+from manifold import device, MANIFOLD_DIM, keven, kodd
 
 # === Core Immune Constants ===
-MHC_SIZE = 48  # MHC presents peptides of specific lengths
+# Route the canonical dimensionality through manifold for consistency
+MHC_SIZE = MANIFOLD_DIM  # MHC presents peptides of specific lengths
 EPITOPE_FACTORS = [k_even := 2, k_odd := 3]  # Binary (self/non-self) and ternary (helper/killer/regulatory)
 
 def get_divisors(n: int) -> List[int]:
@@ -158,24 +159,37 @@ class ImmuneCell:
             if MHC_SIZE % factor != 0:
                 # Skip illegal factors to avoid fractional coverage
                 continue
-            sites_per_antibody = MHC_SIZE // factor
             # Optionally shuffle the site indices before partitioning
-            if shuffle_sites:
-                perm = torch.randperm(MHC_SIZE, device=device)
+            perm = torch.randperm(MHC_SIZE, device=device) if shuffle_sites else torch.arange(MHC_SIZE, device=device)
+
+            if factor == 2:
+                # Route even/odd selection through manifold keven/kodd for clarity and consistency
+                even_pos = keven.indices(MHC_SIZE, device=device)
+                odd_pos = kodd.indices(MHC_SIZE, device=device)
+                parts = [perm[even_pos], perm[odd_pos]]
+                for binding_sites in parts:
+                    antibody = Antibody(
+                        epitope_id=antigen.epitope_id,
+                        binding_sites=binding_sites,
+                        affinity=0.9,
+                        produced_by=self.cell_id
+                    )
+                    antibodies.append(antibody)
             else:
-                perm = torch.arange(MHC_SIZE, device=device)
-            for i in range(factor):
-                start = i * sites_per_antibody
-                stop = (i + 1) * sites_per_antibody
-                binding_sites = perm[start:stop]
-                
-                antibody = Antibody(
-                    epitope_id=antigen.epitope_id,
-                    binding_sites=binding_sites,
-                    affinity=0.9,
-                    produced_by=self.cell_id
-                )
-                antibodies.append(antibody)
+                # Generic equal partitioning for other legal factors (e.g., 3)
+                sites_per_antibody = MHC_SIZE // factor
+                for i in range(factor):
+                    start = i * sites_per_antibody
+                    stop = (i + 1) * sites_per_antibody
+                    binding_sites = perm[start:stop]
+
+                    antibody = Antibody(
+                        epitope_id=antigen.epitope_id,
+                        binding_sites=binding_sites,
+                        affinity=0.9,
+                        produced_by=self.cell_id
+                    )
+                    antibodies.append(antibody)
         
         self.antibodies[antigen.epitope_id] = antibodies
         emit(f"Generated {len(antibodies)} antibodies for {antigen.epitope_id}", kind="notice")
