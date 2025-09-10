@@ -230,6 +230,7 @@ class keven:
 
 class kodd:
     mask = staticmethod(KOdd.mask)
+    indices = staticmethod(KOdd.indices)
     keep = staticmethod(KOdd.keep)
     kill = staticmethod(KOdd.kill)
 
