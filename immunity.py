@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 The 48-Manifold Immune System Analog
-Showing how computational wholeness mirrors biological integrity
+A computational model inspired by immune system mechanisms for integrity checking
 """
 
 import torch
@@ -19,7 +19,7 @@ MHC_SIZE = 48  # MHC presents peptides of specific lengths
 EPITOPE_FACTORS = [2, 3]  # Binary (self/non-self) and ternary (helper/killer/regulatory)
 
 class CellType(Enum):
-    """Immune cell types mirror account modes"""
+    """Representative immune cell types with mapped roles (analog)"""
     THYMUS = "thymus"  # Training ground (genesis account)
     T_CELL = "t_cell"  # Verifier (whole account)
     B_CELL = "b_cell"  # Antibody producer (share manager)
@@ -29,7 +29,7 @@ class CellType(Enum):
 @dataclass
 class Antigen:
     """
-    Antigen = WholeBundle
+    Antigen ~ WholeBundle (analog)
     Must be properly formatted to be recognized
     """
     epitope_id: str  # Like bundle_id
@@ -58,7 +58,7 @@ class Antigen:
 @dataclass
 class Antibody:
     """
-    Antibody = Share
+    Antibody ~ Share (analog)
     Binds to specific epitope regions
     """
     epitope_id: str  # Which antigen it targets
@@ -73,7 +73,7 @@ class Antibody:
 
 class ImmuneCell:
     """
-    Immune Cell = WholenessAccount
+    Immune Cell ~ WholenessAccount (analog)
     Maintains integrity through recognition
     """
     def __init__(self, cell_id: str, cell_type: CellType):
@@ -92,7 +92,7 @@ class ImmuneCell:
         """
         # Check if properly folded (not decimated)
         if not antigen.is_properly_folded():
-            print(f"REJECTED: Misfolded protein (decimated value)")
+            print(f"Rejected: misfolded protein (decimated value)")
             self.trigger_inflammation()
             return False
         
@@ -106,27 +106,24 @@ class ImmuneCell:
         
         if signature in self.recognized_self:
             # Self-antigen: accept without inflammation
-            print(f"✓ Recognized self-antigen {antigen.epitope_id}")
+            print(f"Recognized self-antigen {antigen.epitope_id}")
             self.bound_antigens[antigen.epitope_id] = antigen
             return True
         else:
-            # Foreign antigen: trigger immune response
-            print(f"⚠ Foreign antigen detected: {antigen.epitope_id}")
-            self.mount_adaptive_response(antigen)
+            # Foreign antigen detected; adaptive response can be mounted by effector pathways (e.g., B-cells)
+            print(f"Foreign antigen detected: {antigen.epitope_id}")
             return False
     
     def trigger_inflammation(self):
         """
-        Inflammation = Rejection of decimated values
-        System-wide alert when integrity violated
+        Inflammation (analog): rejection signal when integrity is violated
         """
         self.activation_state = 1.0
-        print(f"🔥 INFLAMMATION: Cell {self.cell_id} detected integrity violation")
+        print(f"Inflammatory signal: cell {self.cell_id} detected an integrity violation")
     
     def mount_adaptive_response(self, antigen: Antigen):
         """
-        Adaptive response = Wholification attempt
-        Try to bind and neutralize foreign material
+        Adaptive response (analog): attempt to bind and neutralize detected foreign material
         """
         # Generate antibodies (shares) that sum to whole
         antibodies = []
@@ -148,12 +145,11 @@ class ImmuneCell:
                 antibodies.append(antibody)
         
         self.antibodies[antigen.epitope_id] = antibodies
-        print(f"🛡️ Generated {len(antibodies)} antibodies for {antigen.epitope_id}")
+        print(f"Generated {len(antibodies)} antibodies for {antigen.epitope_id}")
     
     def check_tolerance(self, pattern: torch.Tensor) -> bool:
         """
-        Immune tolerance = Accepting certain patterns
-        Like the Wholification Pool accepting fragments
+        Immune tolerance (analog): accepting certain patterns without activation
         """
         # Central tolerance: trained in thymus (genesis)
         if self.cell_type == CellType.THYMUS:
@@ -170,8 +166,7 @@ class ImmuneCell:
 
 class ClonalSelection:
     """
-    Clonal Selection = Atomic transaction selection
-    Only cells that recognize complete antigens proliferate
+    Clonal selection (analog): only cells that recognize complete antigens proliferate
     """
     def __init__(self):
         self.cell_pool: Dict[str, ImmuneCell] = {}
@@ -197,13 +192,13 @@ class ClonalSelection:
                     clone.recognized_self = cell.recognized_self.copy()
                     selected_cells.append(clone)
                     
-                print(f"✓ Cell {cell_id} selected for clonal expansion")
+                print(f"Cell {cell_id} selected for clonal expansion")
         
         return selected_cells
 
 class ComplementSystem:
     """
-    Complement = Wholification Pool
+    Complement ~ Wholification Pool (analog)
     Combines antibody fragments to eliminate threats
     """
     def __init__(self):
@@ -212,8 +207,7 @@ class ComplementSystem:
     
     def activate_cascade(self, antibodies: List[Antibody]) -> Optional[torch.Tensor]:
         """
-        Complement cascade = Atomic wholification
-        Multiple antibodies must combine to form MAC (Membrane Attack Complex)
+        Complement cascade (analog): multiple antibodies must combine to form MAC (Membrane Attack Complex)
         """
         if self.c3_convertase_active:
             print("Cascade already active (atomic operation in progress)")
@@ -232,7 +226,7 @@ class ComplementSystem:
             
             # Form MAC (Membrane Attack Complex) - like creating whole bundle
             mac_complex = torch.ones(MHC_SIZE, device=device)
-            print(f"💥 MAC formed: Complete neutralization achieved")
+            print(f"MAC formed: complete neutralization achieved")
             return mac_complex
             
         finally:
@@ -240,8 +234,8 @@ class ComplementSystem:
 
 class ImmuneSystem:
     """
-    Complete Immune System = Wholeness Ledger
-    Maintains biological integrity through wholeness verification
+    Complete Immune System ~ Wholeness Ledger (analog)
+    Maintains integrity through recognition and verification
     """
     def __init__(self):
         self.cells: Dict[str, ImmuneCell] = {}
@@ -252,7 +246,7 @@ class ImmuneSystem:
     
     def _create_thymus(self) -> ImmuneCell:
         """
-        Thymus = Genesis account
+        Thymus ~ Genesis account (analog)
         Where self-tolerance is established
         """
         thymus = ImmuneCell("thymus", CellType.THYMUS)
@@ -262,7 +256,7 @@ class ImmuneSystem:
             self_pattern = torch.arange(MHC_SIZE, device=device) + (i * 100)
             thymus.check_tolerance(self_pattern)
         
-        print(f"Thymus trained: {len(thymus.recognized_self)} self-antigens recognized")
+        print(f"Thymus initialized: {len(thymus.recognized_self)} self-antigens recognized")
         return thymus
     
     def create_immune_cell(self, cell_type: CellType) -> ImmuneCell:
@@ -297,19 +291,18 @@ class ImmuneSystem:
         # Check if all antigens are properly sized
         if misfolded_count > 0:
             self.inflammation_level = misfolded_count / max(total_antigens, 1)
-            print(f"⚠️ System inflammation: {self.inflammation_level:.1%}")
+            print(f"System inflammation: {self.inflammation_level:.1%}")
             return False
         
-        print(f"✓ Immune homeostasis maintained: {total_antigens} antigens, 0 misfolded")
+        print(f"Immune homeostasis maintained: {total_antigens} antigens, 0 misfolded")
         return True
 
 def demonstrate_immune_analog():
     """
-    Show how the Wholeness Protocol mirrors immune function
+    Demonstrate an immune-system-inspired analog within the 48-manifold framework
     """
     print("=" * 60)
-    print("THE 48-MANIFOLD AS IMMUNE SYSTEM")
-    print("Biological Integrity Through Computational Wholeness")
+    print("IMMUNE SYSTEM ANALOG DEMONSTRATION")
     print("=" * 60)
     
     # Initialize immune system
@@ -320,7 +313,7 @@ def demonstrate_immune_analog():
     b_cell = immune.create_immune_cell(CellType.B_CELL)
     dendritic = immune.create_immune_cell(CellType.DENDRITIC)
     
-    print("\n2. SELF-ANTIGEN PRESENTATION (Whole Bundle Reception):")
+    print("\n2. SELF-ANTIGEN PRESENTATION (analog: whole-bundle reception):")
     # Create properly folded self-antigen
     self_antigen = Antigen(
         epitope_id="self_protein_1",
@@ -331,7 +324,7 @@ def demonstrate_immune_analog():
     )
     dendritic.present_antigen(self_antigen)
     
-    print("\n3. MISFOLDED PROTEIN REJECTION (Decimation Prevention):")
+    print("\n3. MISFOLDED PROTEIN REJECTION (decimation prevention):")
     # Try to present misfolded protein (decimated value)
     misfolded = Antigen(
         epitope_id="prion_1",
@@ -342,7 +335,7 @@ def demonstrate_immune_analog():
     )
     dendritic.present_antigen(misfolded)
     
-    print("\n4. FOREIGN ANTIGEN RESPONSE (Non-Self Detection):")
+    print("\n4. FOREIGN ANTIGEN RESPONSE (non-self detection):")
     # Present foreign but properly structured antigen
     foreign_antigen = Antigen(
         epitope_id="virus_spike_1",
@@ -353,32 +346,33 @@ def demonstrate_immune_analog():
     )
     dendritic.present_antigen(foreign_antigen)
     
-    print("\n5. ANTIBODY GENERATION (Share Creation):")
-    # B-cell produces antibodies
-    if foreign_antigen.epitope_id in dendritic.antibodies:
-        antibodies = dendritic.antibodies[foreign_antigen.epitope_id]
+    print("\n5. ANTIBODY GENERATION (share creation):")
+    # B-cell produces antibodies (explicitly mounted here)
+    b_cell.mount_adaptive_response(foreign_antigen)
+    if foreign_antigen.epitope_id in b_cell.antibodies:
+        antibodies = b_cell.antibodies[foreign_antigen.epitope_id]
         print(f"   B-cell generated {len(antibodies)} antibodies")
         print(f"   Each antibody covers {antibodies[0].valency} epitopes")
     
-    print("\n6. COMPLEMENT CASCADE (Wholification):")
+    print("\n6. COMPLEMENT CASCADE (wholification):")
     # Activate complement to form MAC
-    if foreign_antigen.epitope_id in dendritic.antibodies:
+    if foreign_antigen.epitope_id in b_cell.antibodies:
         mac = immune.complement.activate_cascade(
-            dendritic.antibodies[foreign_antigen.epitope_id]
+            b_cell.antibodies[foreign_antigen.epitope_id]
         )
         if mac is not None:
             print("   Complete neutralization achieved")
     
-    print("\n7. CLONAL SELECTION (Atomic Verification):")
+    print("\n7. CLONAL SELECTION (atomic verification):")
     # Select cells that maintain integrity
     selected = immune.clonal_selector.select_and_proliferate(self_antigen)
     print(f"   {len(selected)} cells selected for proliferation")
     
-    print("\n8. SYSTEM INTEGRITY CHECK (Homeostasis):")
+    print("\n8. SYSTEM INTEGRITY CHECK (homeostasis):")
     immune.check_system_integrity()
     
     print("\n" + "=" * 60)
-    print("KEY PARALLELS:")
+    print("KEY ANALOG CORRESPONDENCES:")
     print("=" * 60)
     
     parallels = [
@@ -400,14 +394,14 @@ def demonstrate_immune_analog():
         print(f"  {left:20s} {eq} {right}")
     
     print("\n" + "=" * 60)
-    print("SIGNALS:")
-    print("  Both systems maintain integrity by:")
-    print("  • Rejecting fragmented/decimated entities")
-    print("  • Accepting only properly formatted wholes")
-    print("  • Using cryptographic/molecular signatures")
-    print("  • Providing repair mechanisms for fragments")
-    print("  • Maintaining perfect memory of what belongs")
-    print("  • Operating through reversible recognition")
+    print("MODEL SIGNALS:")
+    print("  In this model, integrity is enforced by:")
+    print("  - Rejecting fragmented/decimated entities")
+    print("  - Accepting only properly formatted wholes")
+    print("  - Using cryptographic/molecular signatures")
+    print("  - Providing repair mechanisms for fragments")
+    print("  - Maintaining memory of what belongs")
+    print("  - Operating through reversible recognition")
     print("=" * 60)
 
 if __name__ == "__main__":
