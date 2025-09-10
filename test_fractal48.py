@@ -4,16 +4,28 @@ Test suite for the Fractal48 PyTorch implementation
 Validates reversibility, performance, and mathematical properties
 """
 
+import matplotlib
+
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as Fw
 import matplotlib.pyplot as plt
+import sys
 import numpy as np
 from fractal48_torch import (
     Fractal48AutoEncoder, 
     FractalCoordinateSystem,
     create_test_data,
-    DEVICE
+    DEVICE,
+    Fractal48Layer
 )
+from main import Fractal48Transfer, FractalCoordinate
+
+def set_seed(seed: int = 1234):
+    """Deterministic seeding for reproducible tests."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
 
 def visualize_factorization():
     """Visualize the 48-manifold factorization process"""
@@ -39,7 +51,7 @@ def visualize_factorization():
     # Get the factorization stages
     with torch.no_grad():
         z, prov = model.encoder(x)
-        phases = prov.phase_history
+        phases = prov.phase_history 
     
     # Plot the progression
     fig, axes = plt.subplots(2, 3, figsize=(12, 8))
@@ -267,18 +279,266 @@ def test_gradient_flow():
           f"max={x.grad.abs().max():.2e}")
 
 
+def test_polyphase_permutation_roundtrip():
+    """Verify pure polyphase (3 then 2×2×2) permutations are exactly reversible.
+    This demonstrates 'transfer, not transform' on the native 48×48 grid without interpolation.
+    """
+    print("\n" + "="*60)
+    print("TESTING POLYPHASE PERMUTATION ROUND-TRIP (48 = 3 × 2 × 2 × 2)")
+    print("="*60)
+
+    B, C, H, W = 2, 1, 48, 48
+    x = torch.randn(B, C, H, W, device=DEVICE)
+    frac = Fractal48Layer(use_learnable_lifting=False)
+
+    # Forward polyphase (permutations only)
+    y = frac.space_to_depth_3(x)   # 48→16, C→C*9
+    y = frac.space_to_depth_2(y)   # 16→8,  C→C*36
+    y = frac.space_to_depth_2(y)   # 8→4,   C→C*144
+    y = frac.space_to_depth_2(y)   # 4→2,   C→C*576
+
+    # Inverse polyphase
+    z = frac.depth_to_space_2(y)   # 2→4
+    z = frac.depth_to_space_2(z)   # 4→8
+    z = frac.depth_to_space_2(z)   # 8→16
+    z = frac.depth_to_space_3(z)   # 16→48
+
+    max_err = (z - x).abs().max().item()
+    mse = torch.mean((z - x) ** 2).item()
+    print(f"Max error: {max_err:.2e} | MSE: {mse:.2e}")
+    print(f"Perfect (within float tolerance): {max_err < 1e-6}")
+
+
+def test_permutation_identities_parameterized():
+    """Stress identity for space_to_depth/depth_to_space across sizes and channels."""
+    print("\n" + "="*60)
+    print("TESTING PERMUTATION IDENTITIES (PARAMETERIZED)")
+    print("="*60)
+    set_seed(1234)
+
+    sizes = [48, 96]
+    batches = [1, 3]
+    channels = [1, 2, 3, 4]
+    frac = Fractal48Layer(use_learnable_lifting=False)
+
+    for H in sizes:
+        for B in batches:
+            for C in channels:
+                x = torch.randn(B, C, H, H, device=DEVICE)
+                # 3× path only if divisible by 3 (true for 48,96)
+                y = frac.space_to_depth_3(x)
+                y = frac.depth_to_space_3(y)
+                e3 = (y - x).abs().max().item()
+
+                z = frac.space_to_depth_2(x)
+                z = frac.depth_to_space_2(z)
+                e2 = (z - x).abs().max().item()
+
+                print(f"  B={B} C={C} H={H} | e3={e3:.2e} e2={e2:.2e}")
+                assert e3 < 1e-6 and e2 < 1e-6
+
+
+def test_fft_ortho_unitary_roundtrip():
+    """Verify 2D FFT with orthonormal scaling is unitary (round-trip is identity)."""
+    print("\n" + "="*60)
+    print("TESTING ORTHONORMAL FFT ROUND-TRIP (UNITARY)")
+    print("="*60)
+
+    B, C, H, W = 2, 3, 48, 48
+    x = torch.randn(B, C, H, W, device=DEVICE)
+    # Orthonormal FFT/IFT
+    X = torch.fft.fft2(x, norm='ortho')
+    z = torch.fft.ifft2(X, norm='ortho').real
+
+    max_err = (z - x).abs().max().item()
+    mse = torch.mean((z - x) ** 2).item()
+    print(f"Max error: {max_err:.2e} | MSE: {mse:.2e}")
+    print(f"Perfect (within float tolerance): {max_err < 1e-6}")
+
+
+def test_bilinear_aliasing_nonzero():
+    """Show that bilinear down/up introduces nonzero error (aliasing/smoothing)."""
+    print("\n" + "="*60)
+    print("TESTING BILINEAR DOWNSAMPLE/UPSAMPLE ALIASING")
+    print("="*60)
+
+    size = 48
+    x = torch.randn(1, 1, size, size, device=DEVICE)
+    down = F.interpolate(x, size=(size//2, size//2), mode='bilinear')
+    up = F.interpolate(down, size=(size, size), mode='bilinear')
+    err = (up - x).abs().mean().item()
+    max_err = (up - x).abs().max().item()
+    print(f"Mean error: {err:.6f} | Max error: {max_err:.6f}")
+    assert err > 1e-3, "Bilinear down/up should introduce noticeable error"
+
+
+def test_integer_lifting_inverse():
+    """Verify that integer_lift_mix followed by integer_lift_unmix returns the original.
+    Test both learnable and non-learnable modes across different shifts.
+    """
+    print("\n" + "="*60)
+    print("TESTING INTEGER LIFTING INVERSE (MIX → UNMIX)")
+    print("="*60)
+
+    B, C, H, W = 2, 8, 16, 16  # C even
+    x = torch.randn(B, C, H, W, device=DEVICE)
+
+    for use_learnable in [False, True]:
+        layer = Fractal48Layer(use_learnable_lifting=use_learnable)
+        for shift in [1, 2, 3]:
+            y = layer.integer_lift_mix(x, shift=shift)
+            z = layer.integer_lift_unmix(y, shift=shift)
+            max_err = (z - x).abs().max().item()
+            mse = torch.mean((z - x) ** 2).item()
+            mode = "learnable" if use_learnable else "integer"
+            print(f"  mode={mode:9s} shift={shift} | Max: {max_err:.2e} | MSE: {mse:.2e}")
+            assert max_err < 1e-5, "Lifting inverse should be near-perfect"
+
+
+def test_pixel_unshuffle_shuffle_roundtrip():
+    """Pixel unshuffle/shuffle permutations are exactly reversible (baseline)."""
+    print("\n" + "="*60)
+    print("TESTING PIXEL_UNSHUFFLE/SHUFFLE ROUND-TRIP")
+    print("="*60)
+    set_seed(2468)
+    B, C, H, W = 2, 3, 48, 48
+    x = torch.randn(B, C, H, W, device=DEVICE)
+
+    # Unshuffle by 3 then 2,2,2 (mirrors 3×2×2×2 factorization)
+    y = F.pixel_unshuffle(x, downscale_factor=3)     # H→H/3, C→C*9
+    y = F.pixel_unshuffle(y, downscale_factor=2)     # /2
+    y = F.pixel_unshuffle(y, downscale_factor=2)
+    y = F.pixel_unshuffle(y, downscale_factor=2)     # H→H/48
+
+    # Shuffle back (reverse order)
+    z = F.pixel_shuffle(y, upscale_factor=2)
+    z = F.pixel_shuffle(z, upscale_factor=2)
+    z = F.pixel_shuffle(z, upscale_factor=2)
+    z = F.pixel_shuffle(z, upscale_factor=3)
+
+    max_err = (z - x).abs().max().item()
+    print(f"Max error: {max_err:.2e}")
+    assert max_err < 1e-6
+
+
+def test_dtype_float64_precision():
+    """Double precision reduces round-trip error further for FFT identity."""
+    print("\n" + "="*60)
+    print("TESTING FLOAT64 PRECISION (FFT IDENTITY)")
+    print("="*60)
+    set_seed(1357)
+    x32 = torch.randn(1, 1, 48, 48, device=DEVICE)
+    x64 = x32.double()
+    X64 = torch.fft.fft2(x64, norm='ortho')
+    z64 = torch.fft.ifft2(X64, norm='ortho').real
+    max_err64 = (z64 - x64).abs().max().item()
+    print(f"Max error (float64): {max_err64:.2e}")
+    assert max_err64 < 1e-10
+
+
+def test_encoder_decoder_perfect_recon_for_sizes():
+    """Fractal48AutoEncoder reconstruction quality for 48- and 96-sized inputs."""
+    print("\n" + "="*60)
+    print("TESTING ENCODER/DECODER PERFECT RECONSTRUCTION (48, 96)")
+    print("="*60)
+    set_seed(97531)
+    sizes = [48, 96]
+    for sz in sizes:
+        # Use base_channels == in_channels and set 1x1 projections to identity
+        in_ch = 3
+        base_ch = 3
+        model = Fractal48AutoEncoder(in_channels=in_ch, base_channels=base_ch).to(DEVICE)
+        model.eval()
+
+        # Force 1x1 convs to identity (perfectly invertible)
+        with torch.no_grad():
+            # Encoder input projection
+            w_in = model.encoder.input_proj.weight
+            w_in.zero_()
+            for c in range(min(in_ch, base_ch)):
+                w_in[c, c, 0, 0] = 1.0
+            # Decoder output projection
+            w_out = model.decoder.output_proj.weight
+            w_out.zero_()
+            for c in range(min(in_ch, base_ch)):
+                w_out[c, c, 0, 0] = 1.0
+
+        x = torch.randn(2, in_ch, sz, sz, device=DEVICE)
+        with torch.no_grad():
+            out = model(x)
+        err = (out['reconstruction'] - out['input']).abs().max().item()
+        print(f"  size={sz} | Max error: {err:.2e}")
+        assert err < 1e-5
+
+
+def test_coordinate_local_opposite_bijection():
+    """Local opposite mapping should be a bijection over the 48 indices."""
+    print("\n" + "="*60)
+    print("TESTING COORDINATE LOCAL OPPOSITE BIJECTION")
+    print("="*60)
+    cs = FractalCoordinateSystem()
+    mapping = {}
+    for i in range(48):
+        opp = cs.get_local_opposite(i)
+        assert 0 <= opp < 48
+        mapping[i] = opp
+    image = set(mapping.values())
+    print(f"Unique images: {len(image)} (expected 48)")
+    assert len(image) == 48
+
+
+def test_main_transfer_reversibility_and_coupling():
+    """Validate the algebra in main.Fractal48Transfer: reversibility and coupling outputs."""
+    print("\n" + "="*60)
+    print("TESTING main.Fractal48Transfer REVERSIBILITY & COUPLING")
+    print("="*60)
+    system = Fractal48Transfer()
+    coord = FractalCoordinate(level=0, branch=17, parity=0, phase=(1, 1, 1))
+    ok = system.verify_reversibility(coord, depth=20)
+    print(f"verify_reversibility(depth=20): {ok}")
+    assert ok is True
+
+    evolved, dual = system.couple_with_local_opposite(coord)
+    # Basic sanity checks on ranges
+    for c in [evolved, dual]:
+        assert 0 <= c.branch < 48
+        assert c.parity in (0, 1, 2)
+
 if __name__ == "__main__":
     print("🔬 TESTING THE 48-MANIFOLD SYSTEM 🔬")
     print(f"Device: {DEVICE}")
-    
-    # Run all tests
-    test_perfect_reconstruction()
-    test_coordinate_system()
-    test_gradient_flow()
-    benchmark_vs_standard()
-    visualize_factorization()
-    
+
+    quick = any(arg.lower() == "quick" for arg in sys.argv[1:])
+
+    if quick:
+        # Fast, focused tests that demonstrate transfer vs transform
+        set_seed(1234)
+        test_polyphase_permutation_roundtrip()
+        test_permutation_identities_parameterized()
+        test_fft_ortho_unitary_roundtrip()
+        test_fft_energy_conservation()
+        test_dtype_float64_precision()
+        test_pixel_unshuffle_shuffle_roundtrip()
+        test_integer_lifting_inverse()
+        test_bilinear_aliasing_nonzero()
+        test_coordinate_local_opposite_bijection()
+    else:
+        # Full suite
+        test_perfect_reconstruction()
+        test_coordinate_system()
+        test_gradient_flow()
+        test_polyphase_permutation_roundtrip()
+        test_permutation_identities_parameterized()
+        test_fft_ortho_unitary_roundtrip()
+        test_fft_energy_conservation()
+        test_dtype_float64_precision()
+        test_pixel_unshuffle_shuffle_roundtrip()
+        test_integer_lifting_inverse()
+        test_bilinear_aliasing_nonzero()
+        benchmark_vs_standard()
+        visualize_factorization()
+
     print("\n" + "="*60)
-    print("✨ ALL TESTS COMPLETE ✨")
+    print("✨ TESTS COMPLETE ✨")
     print("The trinity of duality shines through the divine decode!")
     print("="*60)
