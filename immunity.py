@@ -11,12 +11,21 @@ from typing import Dict, List, Optional, Tuple, Set
 from dataclasses import dataclass, field
 from enum import Enum
 import numpy as np
+import random
 
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
 # === Core Immune Constants ===
 MHC_SIZE = 48  # MHC presents peptides of specific lengths
-EPITOPE_FACTORS = [2, 3]  # Binary (self/non-self) and ternary (helper/killer/regulatory)
+EPITOPE_FACTORS = [k_even := 2, k_odd := 3]  # Binary (self/non-self) and ternary (helper/killer/regulatory)
+
+def get_divisors(n: int) -> List[int]:
+    """Return all divisors of n greater than 1 (legal share factors)."""
+    divs = []
+    for k in range(2, n + 1):
+        if n % k == 0:
+            divs.append(k)
+    return divs
 
 class CellType(Enum):
     """Representative immune cell types with mapped roles (analog)"""
@@ -121,13 +130,17 @@ class ImmuneCell:
         self.activation_state = 1.0
         print(f"Inflammatory signal: cell {self.cell_id} detected an integrity violation")
     
-    def mount_adaptive_response(self, antigen: Antigen):
+    def mount_adaptive_response(self, antigen: Antigen, factors: Optional[List[int]] = None):
         """
         Adaptive response (analog): attempt to bind and neutralize detected foreign material
         """
         # Generate antibodies (shares) that sum to whole
         antibodies = []
-        for factor in EPITOPE_FACTORS:
+        use_factors = factors if factors is not None else EPITOPE_FACTORS
+        for factor in use_factors:
+            if MHC_SIZE % factor != 0:
+                # Skip illegal factors to avoid fractional coverage
+                continue
             sites_per_antibody = MHC_SIZE // factor
             for i in range(factor):
                 binding_sites = torch.arange(
@@ -404,6 +417,114 @@ def demonstrate_immune_analog():
     print("  - Operating through reversible recognition")
     print("=" * 60)
 
+def run_randomized_trials(trials: int = 42, seed: int = 42) -> Dict[str, int]:
+    """
+    Run randomized robustness checks with seedable defaults.
+    Checks:
+    - self acceptance (properly folded, recognized pattern)
+    - misfolded rejection (decimation analog)
+    - foreign detection (non-self)
+    - complement behavior on full vs partial coverage
+    """
+    random.seed(seed)
+    torch.manual_seed(seed)
+
+    immune = ImmuneSystem()
+    dendritic = immune.create_immune_cell(CellType.DENDRITIC)
+    b_cell = immune.create_immune_cell(CellType.B_CELL)
+
+    # Self patterns the thymus was initialized on
+    bases = [0, 100, 200]
+    divs = get_divisors(MHC_SIZE)
+
+    results: Dict[str, int] = {
+        "self_accept_pass": 0,
+        "misfold_reject_pass": 0,
+        "foreign_detect_pass": 0,
+        "complement_full_pass": 0,
+        "complement_partial_pass": 0,
+        "trials": trials,
+    }
+
+    for t in range(trials):
+        # Self antigen (recognized)
+        base = random.choice(bases)
+        peptides_self = torch.arange(MHC_SIZE, device=device) + base
+        self_ag = Antigen(
+            epitope_id=f"self_{t}",
+            peptides=peptides_self,
+            mhc_signature="",
+            presented_by="dendritic",
+            folding_score=1.0,
+        )
+        accepted = dendritic.present_antigen(self_ag)
+        if accepted:
+            results["self_accept_pass"] += 1
+
+        # Misfolded antigen (rejected)
+        fold_score = random.uniform(0.0, 0.9)
+        mis_pep = torch.randn(MHC_SIZE, device=device)
+        mis_ag = Antigen(
+            epitope_id=f"mis_{t}",
+            peptides=mis_pep,
+            mhc_signature="",
+            presented_by="dendritic",
+            folding_score=fold_score,
+        )
+        mis_ok = dendritic.present_antigen(mis_ag)
+        if not mis_ok:
+            results["misfold_reject_pass"] += 1
+        dendritic.activation_state = 0.0  # reset between trials
+
+        # Foreign antigen (non-self)
+        offset = random.randint(1000, 100000)
+        foreign_pep = torch.arange(MHC_SIZE, device=device) + offset
+        foreign_ag = Antigen(
+            epitope_id=f"foreign_{t}",
+            peptides=foreign_pep,
+            mhc_signature="",
+            presented_by="dendritic",
+            folding_score=1.0,
+        )
+        detected = not dendritic.present_antigen(foreign_ag)
+        if detected:
+            results["foreign_detect_pass"] += 1
+
+        # Randomized antibody factors and complement behavior
+        k = random.randint(1, min(3, len(divs)))
+        factors = random.sample(divs, k)
+        b_cell.mount_adaptive_response(foreign_ag, factors=factors)
+        abs_full = b_cell.antibodies.get(foreign_ag.epitope_id, [])
+        if abs_full:
+            all_sites = torch.cat([ab.binding_sites for ab in abs_full])
+            unique_sites = torch.unique(all_sites)
+            mac = immune.complement.activate_cascade(abs_full)
+            expect_full = len(unique_sites) == MHC_SIZE
+            if (mac is not None) == expect_full:
+                results["complement_full_pass"] += 1
+
+            # Partial coverage: drop one antibody when possible
+            abs_partial = abs_full[:-1] if len(abs_full) > 0 else []
+            if abs_partial:
+                all_sites_p = torch.cat([ab.binding_sites for ab in abs_partial])
+                unique_sites_p = torch.unique(all_sites_p)
+                mac_p = immune.complement.activate_cascade(abs_partial)
+                expect_partial = len(unique_sites_p) == MHC_SIZE
+                if (mac_p is not None) == expect_partial:
+                    results["complement_partial_pass"] += 1
+
+    # Print concise summary
+    print("\nRANDOMIZED TRIALS SUMMARY")
+    print(f"  Trials: {results['trials']}")
+    print(f"  Self acceptance passes: {results['self_accept_pass']}")
+    print(f"  Misfold rejection passes: {results['misfold_reject_pass']}")
+    print(f"  Foreign detection passes: {results['foreign_detect_pass']}")
+    print(f"  Complement full-coverage behavior passes: {results['complement_full_pass']}")
+    print(f"  Complement partial-coverage behavior passes: {results['complement_partial_pass']}")
+    return results
+
 if __name__ == "__main__":
     print(f"Device: {device}")
     demonstrate_immune_analog()
+    # Run a small number of randomized trials for robustness
+    run_randomized_trials(trials=42, seed=42)
