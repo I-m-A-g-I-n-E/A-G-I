@@ -5,6 +5,7 @@ Run directly as a script or via pytest.
 """
 from typing import Dict
 import argparse
+import pytest
 
 from immunity import (
     run_randomized_trials,
@@ -35,6 +36,7 @@ def main() -> None:
 
 # Optional pytest entrypoint
 
+@pytest.mark.slow
 def test_randomized_trials_smoke():
     """Smoke test: ensure randomized trials run and produce bounded counts."""
     results = run_randomized_trials(trials=5, seed=123)

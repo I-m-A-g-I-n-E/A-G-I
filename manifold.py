@@ -224,6 +224,7 @@ class kull:
 
 class keven:
     mask = staticmethod(KEven.mask)
+    indices = staticmethod(KEven.indices)
     keep = staticmethod(KEven.keep)
     kill = staticmethod(KEven.kill)
 

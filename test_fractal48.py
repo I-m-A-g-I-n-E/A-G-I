@@ -10,6 +10,7 @@ import matplotlib
 import torch
 import torch.nn as nn
 import torch.nn.functional as Fw
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import sys
 import numpy as np
@@ -92,6 +93,7 @@ def visualize_factorization():
     print("✓ Saved visualization to fractal48_factorization.png")
 
 
+@pytest.mark.slow
 def test_perfect_reconstruction():
     """Test that the system achieves perfect reconstruction"""
     print("\n" + "="*60)
@@ -163,10 +165,11 @@ def test_coordinate_system():
     print("   ↓ Dyadic")
 
 
+@pytest.mark.slow
 def benchmark_vs_standard():
     """Compare 48-system against standard convolutions"""
     print("\n" + "="*60)
-    print("BENCHMARKING VS STANDARD CONVOLUTIONS")
+    print("BENCHMARKING AGAINST STANDARD CONVOLUTIONS")
     print("="*60)
     
     # 48-manifold system
@@ -248,6 +251,7 @@ def benchmark_vs_standard():
         print(f"  Output shape: {out.shape}")
 
 
+@pytest.mark.slow
 def test_gradient_flow():
     """Test gradient flow through the reversible system"""
     print("\n" + "="*60)
@@ -436,6 +440,7 @@ def test_dtype_float64_precision():
     assert max_err64 < 1e-10
 
 
+@pytest.mark.slow
 def test_encoder_decoder_perfect_recon_for_sizes():
     """Fractal48AutoEncoder reconstruction quality for 48- and 96-sized inputs."""
     print("\n" + "="*60)

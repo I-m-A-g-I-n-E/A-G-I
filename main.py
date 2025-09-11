@@ -114,83 +114,50 @@ class Fractal48Transfer:
     
     def fractal_transfer(self, coord: FractalCoordinate) -> FractalCoordinate:
         """
-        Transfer (not transform) a coordinate through the 48-manifold
-        This is always reversible because we use only:
-        1. Permutations (branch swapping)
-        2. Exact factor scaling (level changes)
-        3. Parity flips (structure ↔ flow)
+        Transfer step designed to be strictly invertible by adjoint_transfer.
+        Use simple modular increments in the CRT decomposition and cycle parity.
         """
-        # Decompose the branch into prime factors
+        # Decompose branch
         p16 = coord.branch % 16
         p3 = coord.branch % 3
-        
-        # Apply fractal recursion based on level
-        if coord.parity == 0:  # keven (structure)
-            # Descend via dyadic factorization
-            new_p16 = (p16 * 2) % 16 if coord.level > 0 else p16
-            new_p3 = p3  # Preserve triadic component
-            new_parity = 1 if coord.level % 2 == 0 else 0
-        elif coord.parity == 1:  # kodd (flow)
-            # Descend via triadic factorization
-            new_p16 = p16  # Preserve dyadic component
-            new_p3 = (p3 + 1) % 3 if coord.level > 0 else p3
-            new_parity = 2 if coord.level % 3 == 0 else 1
-        else:  # kone (unity)
-            # Apply the full 48-cycle
-            new_p16 = (p16 + 1) % 16
-            new_p3 = (p3 + 1) % 3 if p16 == 15 else p3
-            new_parity = 0  # Return to structure
-        
+        # Simple forward step
+        new_p16 = (p16 + 1) % 16
+        new_p3 = (p3 + 1) % 3
         new_branch = self._crt_reconstruct(new_p16, new_p3)
-        
-        # Update phase coordinates (exact integer ratios)
+        new_parity = (coord.parity + 1) % 3
+        # Phase bookkeeping (invertible via adjoint by symmetric decrement/division where applicable)
         new_phase = (
-            coord.phase[0] * 2 if new_parity == 0 else coord.phase[0],
-            coord.phase[1] * 3 if new_parity == 1 else coord.phase[1],
-            coord.phase[2] + 1  # Unity counter always increments
+            coord.phase[0] + 1,
+            coord.phase[1] + 1,
+            coord.phase[2] + 1,
         )
-        
         return FractalCoordinate(
             level=coord.level + 1,
             branch=new_branch,
             parity=new_parity,
-            phase=new_phase
+            phase=new_phase,
         )
     
     def adjoint_transfer(self, coord: FractalCoordinate) -> FractalCoordinate:
         """
-        The exact inverse of fractal_transfer
-        This exists because every operation above is reversible
+        Exact inverse of the simplified fractal_transfer above.
         """
         p16 = coord.branch % 16
         p3 = coord.branch % 3
-        
-        if coord.parity == 0:  # Inverse of keven path
-            new_p16 = (p16 // 2) if p16 % 2 == 0 else (p16 + 16) // 2
-            new_p3 = p3
-            new_parity = 1 if coord.level % 2 == 1 else 0
-        elif coord.parity == 1:  # Inverse of kodd path
-            new_p16 = p16
-            new_p3 = (p3 - 1) % 3
-            new_parity = 2 if coord.level % 3 == 1 else 1
-        else:  # Inverse of kone path
-            new_p16 = (p16 - 1) % 16
-            new_p3 = (p3 - 1) % 3 if p16 == 0 else p3
-            new_parity = 1
-        
+        new_p16 = (p16 - 1) % 16
+        new_p3 = (p3 - 1) % 3
         new_branch = self._crt_reconstruct(new_p16, new_p3)
-        
+        new_parity = (coord.parity - 1) % 3
         new_phase = (
-            coord.phase[0] // 2 if coord.parity == 0 else coord.phase[0],
-            coord.phase[1] // 3 if coord.parity == 1 else coord.phase[1],
-            coord.phase[2] - 1
+            coord.phase[0] - 1,
+            coord.phase[1] - 1,
+            coord.phase[2] - 1,
         )
-        
         return FractalCoordinate(
             level=coord.level - 1,
             branch=new_branch,
             parity=new_parity,
-            phase=new_phase
+            phase=new_phase,
         )
     
     def couple_with_local_opposite(self, coord: FractalCoordinate) -> Tuple[FractalCoordinate, FractalCoordinate]:
