@@ -14,6 +14,8 @@ import numpy as np
 import random
 import time
 import click
+import os
+from pathlib import Path
 import statistics
 import csv
 
@@ -913,6 +915,7 @@ def timed_call(label: str, func, *args, **kwargs):
 @click.option("--repeat", type=int, default=1, help="Repeat runs for benchmarking; prints may be verbose.")
 @click.option("--json-summary", type=click.Path(dir_okay=False, writable=True), default=None, help="Write JSON summary to file (or '-' for stdout).")
 @click.option("--csv-summary", type=click.Path(dir_okay=False, writable=True), default=None, help="Write CSV summary to file (or '-' for stdout).")
+@click.option("--out-dir", type=click.Path(file_okay=False), default=None, help="Optional directory to write outputs (JSON/CSV) into. Relative filenames will be placed under this directory.")
 # Verbosity
 @click.option("--verbose/--no-verbose", default=False, help="Verbose logging (per-step emits).")
 # Folding QA demo flag
@@ -944,6 +947,7 @@ def cli(
     repeat: int,
     json_summary: Optional[str],
     csv_summary: Optional[str],
+    out_dir: Optional[str],
     verbose: bool,
     folding_demo: bool,
     pdb_id: Optional[str],
@@ -1046,6 +1050,18 @@ def cli(
         if benchmark:
             click.secho(f"PDB batch time: {dt*1000:.2f} ms", fg="green")
 
+    # Resolve output paths helper
+    def _resolve_out_path(path: Optional[str]) -> Optional[Path]:
+        if not path or path == "-":
+            return None if path is None else Path('-')
+        p = Path(path)
+        base = p
+        if out_dir and not p.is_absolute():
+            base = Path(out_dir) / p
+        # Ensure parent exists
+        base.parent.mkdir(parents=True, exist_ok=True)
+        return base
+
     # Centralized summary construction
     import json as _json
     summary = {
@@ -1077,10 +1093,12 @@ def cli(
     # JSON output
     if json_summary:
         payload = _json.dumps(summary, indent=2)
+        json_path = _resolve_out_path(json_summary)
         if json_summary == "-":
             click.echo(payload)
         else:
-            with open(json_summary, "w") as f:
+            assert json_path is not None
+            with open(json_path, "w") as f:
                 f.write(payload)
 
     # CSV output (one-line rollup)
@@ -1117,7 +1135,9 @@ def cli(
                 for r in rows:
                     writer.writerow(r)
             else:
-                with open(csv_summary, "w", newline="") as f:
+                csv_path = _resolve_out_path(csv_summary)
+                assert csv_path is not None
+                with open(csv_path, "w", newline="") as f:
                     writer = csv.DictWriter(f, fieldnames=headers)
                     writer.writeheader()
                     writer.writerows(rows)
@@ -1169,7 +1189,9 @@ def cli(
             writer.writeheader()
             writer.writerow(row)
         else:
-            with open(csv_summary, "w", newline="") as f:
+            csv_path = _resolve_out_path(csv_summary)
+            assert csv_path is not None
+            with open(csv_path, "w", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=headers)
                 writer.writeheader()
                 writer.writerow(row)
