@@ -6,12 +6,12 @@ Loads the mean composition vector from Phase 2 and generates a 3D structure
 in PDB format.
 """
 import argparse
-import json
 import os
-import shutil
 import numpy as np
 import torch
-from bio.conductor import Conductor
+
+from bio.utils import load_ensemble, ensure_dir_for, save_json
+from bio import pipeline
 
 
 def _load_sequence(seq_arg: str | None, seq_file: str | None, fallback_len: int) -> str:
@@ -31,9 +31,8 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     print("🎻 Tuning up for geometric realization...")
 
     # 1. Load the score from Phase 2
-    mean_composition_path = f"{input_prefix}_mean.npy"
-    print(f"   - Loading mean composition from {mean_composition_path}")
-    mean_composition = torch.from_numpy(np.load(mean_composition_path))
+    print(f"   - Loading ensemble from prefix: {input_prefix}")
+    mean_composition, certainty = load_ensemble(input_prefix)
     # Determine fallback length for default sequence
     if mean_composition.ndim == 1:
         L = mean_composition.shape[0]
@@ -42,68 +41,62 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     seq = _load_sequence(sequence, sequence_file, fallback_len=int(L if L > 0 else 48))
     print(f"   - Using sequence of length {len(seq)}")
 
-    # 2. Instantiate the Conductor and build the structure
-    conductor = Conductor()
+    # Optional amplification and repetition from args if present
+    comp = mean_composition.clone()
+    if hasattr(args, 'amplify') and float(args.amplify) != 1.0:
+        comp = comp * float(args.amplify)
+    if hasattr(args, 'repeat_windows') and int(args.repeat_windows) > 1:
+        comp = comp.repeat(int(max(1, args.repeat_windows)), 1)
+        certainty = certainty.repeat(int(max(1, args.repeat_windows)))
+
+    # 2. Build the structure via pipeline
     print("   - Building full backbone with Harmony Constraint Layer...")
-    backbone, phi, psi, modes = conductor.build_backbone(mean_composition, sequence=seq)
+    backbone, phi, psi, modes, conductor = pipeline.conduct_backbone(comp, seq)
 
     # 3. Save the final structure to a PDB file
+    ensure_dir_for(output_pdb)
     conductor.save_to_pdb(backbone, output_pdb)
-    # Also save an initial-labeled copy for artifact continuity
     base_noext = output_pdb.rsplit('.', 1)[0]
     initial_pdb = base_noext + "_initial.pdb"
     try:
-        shutil.copyfile(output_pdb, initial_pdb)
+        # Create an initial-labeled copy for artifact continuity
+        conductor.save_to_pdb(backbone, initial_pdb)
     except Exception as e:
         print(f"   - Warning: could not create initial-labeled PDB copy: {e}")
 
     # 4. Run QC and save a report
-    report = conductor.quality_check(backbone, phi, psi, modes)
-    qc_path = output_pdb.rsplit('.', 1)[0] + "_qc.json"
-    with open(qc_path, 'w') as fh:
-        json.dump(report, fh, indent=2)
+    report = pipeline.quality_report(conductor, backbone, phi, psi, modes)
+    qc_path = base_noext + "_qc.json"
+    save_json(report, qc_path)
     print(f"   - Wrote QC report to {qc_path}")
     # Also save an initial-labeled QC copy for artifact continuity
     initial_qc_path = base_noext + "_initial_qc.json"
     try:
-        with open(initial_qc_path, 'w') as fh:
-            json.dump(report, fh, indent=2)
+        save_json(report, initial_qc_path)
     except Exception as e:
         print(f"   - Warning: could not create initial-labeled QC copy: {e}")
     # Compute initial dissonance score for sonification center weighting
-    init_weights = {
-        'clash': 1.5,
-        'ca': 1.0,
-        'smooth': 0.2,
-        'snap': 0.5,
-    }
+    init_weights = {'clash': 1.5, 'ca': 1.0, 'smooth': 0.2, 'snap': 0.5}
     torsions_init = np.stack([phi, psi], axis=1)
     dissonance_initial = conductor.calculate_dissonance(backbone, torsions_init, modes, init_weights)
 
     # 5. Optional refinement
     print("🎼 Beginning refinement rehearsal...")
     if args.refine:
-        weights = {
-            'clash': args.w_clash,
-            'ca': args.w_ca,
-            'smooth': args.w_smooth,
-            'snap': args.w_snap,
-        }
+        weights = {'clash': args.w_clash, 'ca': args.w_ca, 'smooth': args.w_smooth, 'snap': args.w_snap}
         print(f"   - Refinement weights: {weights}")
-        initial_torsions = [(float(phi[i]), float(psi[i])) for i in range(len(phi))]
-        refined_torsions, refined_backbone = conductor.refine_torsions(
-            initial_torsions, modes, seq, max_iters=args.refine_iters, step_deg=args.refine_step, seed=args.refine_seed,
-            weights=weights
+        refined_torsions, refined_backbone = pipeline.refine_backbone(
+            conductor, backbone, phi, psi, modes, seq,
+            max_iters=args.refine_iters, step_deg=args.refine_step, seed=args.refine_seed, weights=weights,
         )
         refined_pdb_path = output_pdb.replace('.pdb', '_refined.pdb')
         conductor.save_to_pdb(refined_backbone, refined_pdb_path)
         # QC for refined
         rphi = np.array([t[0] for t in refined_torsions])
         rpsi = np.array([t[1] for t in refined_torsions])
-        qc_refined = conductor.quality_check(refined_backbone, rphi, rpsi, modes)
-        qc_refined_path = output_pdb.rsplit('.', 1)[0] + "_refined_qc.json"
-        with open(qc_refined_path, 'w') as fh:
-            json.dump(qc_refined, fh, indent=2)
+        qc_refined = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        qc_refined_path = base_noext + "_refined_qc.json"
+        save_json(qc_refined, qc_refined_path)
         # Dissonance for refined
         torsions_ref = np.stack([rphi, rpsi], axis=1)
         dissonance_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
@@ -119,66 +112,16 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     # 6. Optional 3-channel sonification
     if args.sonify_3ch and args.audio_wav:
         print("🎶 Orchestrating 3-channel sonification...")
-        # Start with composition; apply amplification
-        comp = mean_composition.clone() if isinstance(mean_composition, torch.Tensor) else mean_composition
-        if args.amplify != 1.0:
-            comp = comp * float(args.amplify)
-
-        # Certainty from ensemble file if available
-        cert_path = f"{input_prefix}_certainty.npy"
-        try:
-            certainty_arr = np.load(cert_path)
-            harmonic_certainty = torch.from_numpy(certainty_arr.astype(np.float32)).view(-1)
-            print(f"   - Loaded certainty from {cert_path} (len={len(harmonic_certainty)})")
-        except Exception as e:
-            print(f"   - Warning: could not load certainty at {cert_path}: {e}. Using uniform certainty.")
-            # Default to 1.0 per window; infer windows from composition
-            W_def = comp.shape[0] if getattr(comp, 'ndim', 1) == 2 else 48
-            harmonic_certainty = torch.ones((int(W_def),), dtype=torch.float32)
-
-        # Repeat windows if requested
-        repeat = int(max(1, args.repeat_windows))
-        if repeat > 1:
-            if isinstance(comp, torch.Tensor):
-                if comp.ndim == 1:
-                    comp = comp.unsqueeze(0).repeat(repeat, 1)
-                else:
-                    comp = comp.repeat(repeat, 1)
-            else:
-                # fall back to numpy then convert back to torch if needed later
-                arr = comp if isinstance(comp, np.ndarray) else np.asarray(comp)
-                if arr.ndim == 1:
-                    arr = np.tile(arr.reshape(1, -1), (repeat, 1))
-                else:
-                    arr = np.tile(arr, (repeat, 1))
-                comp = torch.from_numpy(arr.astype(np.float32))
-            # repeat certainty as well
-            harmonic_certainty = harmonic_certainty.repeat(repeat)
-
-        # Key (kore) from key estimator — use windowed comp if 2D, else expand
-        from bio.key_estimator import estimate_key_and_modes
-        kore_input = comp if (isinstance(comp, torch.Tensor) and comp.ndim == 2) else comp.unsqueeze(0)
-        kore_vector, _ = estimate_key_and_modes(kore_input, seq)
-
-        # Prepare dissonance vectors per window (match certainty length)
-        Wc = int(harmonic_certainty.shape[0])
-        diss_init_vec = torch.tensor([dissonance_initial] * Wc, dtype=torch.float32)
-        diss_ref_vec = torch.tensor([dissonance_refined] * Wc, dtype=torch.float32)
-
-        # Sonify using TrinitySonifier with ergonomic stride control
-        from bio.sonifier import TrinitySonifier
+        kore_vector = pipeline.estimate_kore(comp, seq)
+        Wc = int(certainty.shape[0])
+        diss_init_vec = pipeline.dissonance_scalar_to_vec(float(dissonance_initial), Wc)
+        diss_ref_vec = pipeline.dissonance_scalar_to_vec(float(dissonance_refined), Wc)
         center_weights = {'kore': args.wc_kore, 'cert': args.wc_cert, 'diss': args.wc_diss}
-        sonifier = TrinitySonifier(bpm=args.bpm, stride_ticks=args.stride_ticks)
-        wav_initial = sonifier.sonify_composition_3ch(
-            comp, kore_vector, harmonic_certainty, diss_init_vec, center_weights
-        )
-        sonifier.save_wav(wav_initial, args.audio_wav.replace('.wav', '_initial.wav'))
-
+        wav_initial = pipeline.sonify_3ch(comp, kore_vector, certainty, diss_init_vec, bpm=args.bpm, stride_ticks=args.stride_ticks)
+        pipeline.save_wav(wav_initial, args.audio_wav.replace('.wav', '_initial.wav'))
         if args.refine:
-            wav_refined = sonifier.sonify_composition_3ch(
-                comp, kore_vector, harmonic_certainty, diss_ref_vec, center_weights
-            )
-            sonifier.save_wav(wav_refined, args.audio_wav.replace('.wav', '_refined.wav'))
+            wav_refined = pipeline.sonify_3ch(comp, kore_vector, certainty, diss_ref_vec, bpm=args.bpm, stride_ticks=args.stride_ticks)
+            pipeline.save_wav(wav_refined, args.audio_wav.replace('.wav', '_refined.wav'))
 
     print("\n" + "=" * 50)
     print("  Structure Generation Complete")

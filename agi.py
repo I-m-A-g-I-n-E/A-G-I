@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""
+AGI Unified CLI
+
+Subcommands:
+- compose: Compose an AA sequence into 48D windows and save ensemble artifacts.
+- structure: Generate PDB from composition; optional refinement and 3-channel sonification.
+- sonify: Sonify a composition prefix into a single 3-channel WAV.
+
+This CLI wraps the pipeline in bio/pipeline.py and does not break existing scripts.
+"""
+from __future__ import annotations
+
+import os
+import json
+from typing import Optional
+
+import click
+import numpy as np
+import torch
+
+from bio import pipeline
+from bio.utils import ensure_dir_for, load_ensemble, save_json
+
+
+@click.group()
+def cli():
+    """AGI Unified CLI: compose → structure → sonify"""
+    pass
+
+
+# -------------------------
+# compose
+# -------------------------
+
+@cli.command()
+@click.option('--sequence', required=True, help='Amino acid sequence (>=48 residues).')
+@click.option('--samples', type=int, default=1, show_default=True)
+@click.option('--variability', type=float, default=0.0, show_default=True)
+@click.option('--seed', type=int, default=None)
+@click.option('--window-jitter', is_flag=True, default=False, show_default=True)
+@click.option('--save-prefix', type=str, required=True, help='Prefix path to save outputs (without extension).')
+@click.option('--save-format', type=click.Choice(['pt', 'npy']), default='npy', show_default=True)
+def compose(sequence: str, samples: int, variability: float, seed: Optional[int], window_jitter: bool,
+            save_prefix: str, save_format: str):
+    """Compose an AA sequence into 48D windows and save mean + certainty."""
+    mean, certainty = pipeline.compose_sequence(
+        sequence.strip().upper(),
+        samples=max(1, int(samples)),
+        variability=max(0.0, min(1.0, variability)),
+        seed=seed,
+        window_jitter=bool(window_jitter),
+    )
+    prefix = os.path.expanduser(save_prefix)
+    os.makedirs(os.path.dirname(prefix) or '.', exist_ok=True)
+    if save_format == 'pt':
+        torch.save(mean, f"{prefix}_mean.pt")
+        torch.save(certainty, f"{prefix}_certainty.pt")
+        click.echo(f"💾 Saved: {prefix}_mean.pt, {prefix}_certainty.pt")
+    else:
+        np.save(f"{prefix}_mean.npy", mean.cpu().numpy())
+        np.save(f"{prefix}_certainty.npy", certainty.cpu().numpy())
+        click.echo(f"💾 Saved: {prefix}_mean.npy, {prefix}_certainty.npy")
+
+
+# -------------------------
+# structure
+# -------------------------
+
+def _load_sequence_arg(seq_arg: Optional[str], seq_file: Optional[str], fallback_len: int) -> str:
+    if seq_arg:
+        return seq_arg.strip().upper()
+    if seq_file:
+        with open(seq_file, 'r') as fh:
+            s = fh.read().strip().upper()
+            return ''.join([c for c in s if c.isalpha()])
+    return 'A' * fallback_len
+
+
+@cli.command()
+@click.option('--input-prefix', required=True, help='Prefix of the ensemble files (e.g., outputs/my_run)')
+@click.option('--output-pdb', required=True, help='Path to save the final PDB file (e.g., outputs/structure.pdb)')
+@click.option('--sequence', required=False, help='Protein sequence as one-letter codes (e.g., ACDEFGH)')
+@click.option('--sequence-file', required=False, help='Path to a file containing the protein sequence')
+@click.option('--refine', is_flag=True, default=False, show_default=True, help='Enable torsion refinement pass')
+@click.option('--refine-iters', type=int, default=150, show_default=True)
+@click.option('--refine-step', type=float, default=2.0, show_default=True)
+@click.option('--refine-seed', type=int, default=None)
+@click.option('--w-clash', type=float, default=1.5, show_default=True)
+@click.option('--w-ca', type=float, default=1.0, show_default=True)
+@click.option('--w-smooth', type=float, default=0.2, show_default=True)
+@click.option('--w-snap', type=float, default=0.5, show_default=True)
+# Sonification
+@click.option('--sonify-3ch', is_flag=True, default=False, show_default=True)
+@click.option('--audio-wav', type=str, default=None, help='Output path for the 3-channel WAV file.')
+@click.option('--bpm', type=float, default=96.0, show_default=True)
+@click.option('--stride-ticks', type=int, default=16, show_default=True)
+@click.option('--amplify', type=float, default=1.0, show_default=True, help='Gain factor for composition before sonify')
+@click.option('--wc-kore', type=float, default=1.5, show_default=True)
+@click.option('--wc-cert', type=float, default=1.0, show_default=True)
+@click.option('--wc-diss', type=float, default=2.5, show_default=True)
+@click.option('--repeat-windows', type=int, default=1, show_default=True)
+def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], sequence_file: Optional[str],
+              refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
+              w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
+              sonify_3ch: bool, audio_wav: Optional[str], bpm: float, stride_ticks: int, amplify: float,
+              wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
+    """Generate PDB from composition mean; optional refine and 3-channel sonification."""
+    mean, certainty = load_ensemble(input_prefix)
+    if mean.ndim == 1:
+        L = mean.shape[0]
+    else:
+        L = mean.shape[0] if mean.shape[0] > 1 else mean.shape[1]
+    seq = _load_sequence_arg(sequence, sequence_file, fallback_len=int(L if L > 0 else 48))
+
+    # Optional amplification and repetition
+    comp = mean.clone()
+    if amplify != 1.0:
+        comp = comp * float(amplify)
+    if repeat_windows > 1:
+        comp = comp.repeat(int(max(1, repeat_windows)), 1)
+        certainty = certainty.repeat(int(max(1, repeat_windows)))
+
+    # Conduct
+    backbone, phi, psi, modes, conductor = pipeline.conduct_backbone(comp, seq)
+    ensure_dir_for(output_pdb)
+    conductor.save_to_pdb(backbone, output_pdb)
+
+    # QC
+    qc = pipeline.quality_report(conductor, backbone, phi, psi, modes)
+    qc_path = output_pdb.rsplit('.', 1)[0] + '_qc.json'
+    save_json(qc, qc_path)
+
+    # Dissonance (initial)
+    torsions_init = np.stack([phi, psi], axis=1)
+    diss_initial = conductor.calculate_dissonance(backbone, torsions_init, modes, {
+        'clash': 1.5, 'ca': 1.0, 'smooth': 0.2, 'snap': 0.5,
+    })
+
+    # Optional refine
+    if refine:
+        weights = {'clash': w_clash, 'ca': w_ca, 'smooth': w_smooth, 'snap': w_snap}
+        refined_torsions, refined_backbone = pipeline.refine_backbone(
+            conductor, backbone, phi, psi, modes, seq,
+            max_iters=int(refine_iters), step_deg=float(refine_step), seed=refine_seed, weights=weights,
+        )
+        ref_pdb = output_pdb.replace('.pdb', '_refined.pdb')
+        conductor.save_to_pdb(refined_backbone, ref_pdb)
+        # QC refined
+        rphi = np.array([t[0] for t in refined_torsions], dtype=np.float32)
+        rpsi = np.array([t[1] for t in refined_torsions], dtype=np.float32)
+        qc_ref = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        qc_ref_path = output_pdb.rsplit('.', 1)[0] + '_refined_qc.json'
+        save_json(qc_ref, qc_ref_path)
+        # Dissonance refined
+        torsions_ref = np.stack([rphi, rpsi], axis=1)
+        diss_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
+    else:
+        diss_refined = diss_initial
+
+    # Optional 3ch sonify
+    if sonify_3ch and audio_wav:
+        kore = pipeline.estimate_kore(comp, seq)
+        W = int(certainty.shape[0])
+        diss_init_vec = pipeline.dissonance_scalar_to_vec(float(diss_initial), W)
+        diss_ref_vec = pipeline.dissonance_scalar_to_vec(float(diss_refined), W)
+        weights_center = {'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss}
+        wave_init = pipeline.sonify_3ch(comp, kore, certainty, diss_init_vec, bpm=bpm, stride_ticks=stride_ticks)
+        pipeline.save_wav(wave_init, audio_wav.replace('.wav', '_initial.wav'))
+        if refine:
+            wave_ref = pipeline.sonify_3ch(comp, kore, certainty, diss_ref_vec, bpm=bpm, stride_ticks=stride_ticks)
+            pipeline.save_wav(wave_ref, audio_wav.replace('.wav', '_refined.wav'))
+
+    click.echo("\n=== Structure Generation Complete ===")
+    click.echo(f"PDB: {output_pdb}")
+    click.echo(f"QC:  {qc_path}")
+
+
+# -------------------------
+# sonify
+# -------------------------
+
+@cli.command()
+@click.option('--input-prefix', required=True, help='Prefix of the ensemble files (e.g., outputs/my_run)')
+@click.option('--output-wav', required=True, help='Path to save a 3-channel WAV (T,3)')
+@click.option('--sequence', required=False, help='Sequence (used to estimate kore)')
+@click.option('--bpm', type=float, default=96.0, show_default=True)
+@click.option('--stride-ticks', type=int, default=16, show_default=True)
+@click.option('--dissonance', type=float, default=0.0, show_default=True, help='Scalar dissonance per window')
+@click.option('--wc-kore', type=float, default=1.5, show_default=True)
+@click.option('--wc-cert', type=float, default=1.0, show_default=True)
+@click.option('--wc-diss', type=float, default=2.5, show_default=True)
+@click.option('--amplify', type=float, default=1.0, show_default=True)
+def sonify(input_prefix: str, output_wav: str, sequence: Optional[str], bpm: float, stride_ticks: int,
+           dissonance: float, wc_kore: float, wc_cert: float, wc_diss: float, amplify: float):
+    """Sonify a composition prefix into a single 3-channel WAV file."""
+    mean, certainty = load_ensemble(input_prefix)
+    seq = sequence or ('A' * int(mean.shape[0] if mean.ndim == 1 else mean.shape[0]))
+    comp = mean.clone()
+    if amplify != 1.0:
+        comp = comp * float(amplify)
+    kore = pipeline.estimate_kore(comp, seq)
+    diss_vec = pipeline.dissonance_scalar_to_vec(float(dissonance), int(certainty.shape[0]))
+    wave = pipeline.sonify_3ch(comp, kore, certainty, diss_vec, bpm=bpm, stride_ticks=stride_ticks,
+                               center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
+    ensure_dir_for(output_wav)
+    pipeline.save_wav(wave, output_wav)
+    click.echo(f"Saved: {output_wav}")
+
+
+if __name__ == '__main__':
+    cli()

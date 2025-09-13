@@ -12,7 +12,7 @@ import os
 import torch
 import numpy as np
 
-from bio.composer import HarmonicPropagator
+from bio import pipeline
 
 
 def compose(
@@ -30,32 +30,17 @@ def compose(
     print(f"   - Seed: {seed}")
     print(f"   - Window Jitter: {window_jitter}")
 
-    all_runs = []
-    with torch.no_grad():
-        for i in range(max(1, samples)):
-            sample_seed = (seed + i) if seed is not None else None
-            composer = HarmonicPropagator(
-                n_layers=4,
-                variability=variability,
-                seed=sample_seed,
-                window_jitter=window_jitter,
-            )
-            comp_vecs = composer(sequence)  # (num_windows, 48)
-            all_runs.append(comp_vecs)
-
-    # Align varying window counts (due to jitter) by truncating to the minimum
-    min_windows = min(cv.shape[0] for cv in all_runs)
-    all_runs_aligned = [cv[:min_windows] for cv in all_runs]
-    # Stack: (samples, num_windows=min_windows, 48)
-    ensemble = torch.stack(all_runs_aligned, dim=0)
-    mean_composition = ensemble.mean(dim=0)          # (num_windows, 48)
-    variance_composition = ensemble.var(dim=0)       # (num_windows, 48)
-    harmonic_certainty = 1.0 - variance_composition.mean(dim=-1)  # (num_windows,)
+    mean_composition, harmonic_certainty = pipeline.compose_sequence(
+        sequence,
+        samples=samples,
+        variability=variability,
+        seed=seed,
+        window_jitter=window_jitter,
+    )
 
     # Report
     print("\n" + "=" * 50)
     print("  Ensemble Composition Complete")
-    print(f"  - Ensemble Tensor Shape: {ensemble.shape}")
     print(f"  - Mean Composition Shape: {mean_composition.shape}")
     print(f"  - Harmonic Certainty Shape: {harmonic_certainty.shape}")
     print("=" * 50)
