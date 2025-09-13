@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import time
 
 # For numerical compatibility in tests (float64 FFT, etc.), use CPU
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("mps")
 print(f"🔥 Torch lit on: {DEVICE}")
 
 
