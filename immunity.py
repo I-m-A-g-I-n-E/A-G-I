@@ -32,6 +32,7 @@ except Exception:
 try:
     from bio.datasources import (
         fetch_pdb,
+        read_pdb,
         parse_pdb_bfactors,
         windowize,
         bfactors_to_peptides,
@@ -47,6 +48,9 @@ except Exception:
 # Route the canonical dimensionality through manifold for consistency
 MHC_SIZE = MANIFOLD_DIM  # MHC presents peptides of specific lengths
 EPITOPE_FACTORS = [k_even := 2, k_odd := 3]  # Binary (self/non-self) and ternary (helper/killer/regulatory)
+
+# Folding acceptance threshold (can be overridden by CLI)
+FOLDING_THRESHOLD: float = 0.95
 
 def get_divisors(n: int) -> List[int]:
     """Return all divisors of n greater than 1 (legal share factors)."""
@@ -118,7 +122,7 @@ class Antigen:
             return False
         
         # Check for fragmentation (like checking for decimation)
-        if self.folding_score < 0.95:  # Partially denatured = decimated
+        if self.folding_score < FOLDING_THRESHOLD:  # Partially denatured = decimated
             return False
         
         return True
@@ -579,16 +583,20 @@ def demonstrate_folding_qa_synthetic() -> Dict[str, int]:
 
 
 def demonstrate_folding_qa_pdb(
-    pdb_id: str,
+    pdb_id: Optional[str] = None,
     chain: Optional[str] = None,
     window_size: int = MHC_SIZE,
     stride: int = 16,
+    pdb_path: Optional[str] = None,
+    educate_first_n: int = 0,
+    bmap: str = "auto",
+    assume_folded: bool = False,
 ) -> Dict[str, int]:
     """
     Real-structure folding QA using RCSB PDB and B-factors as a proxy for local order.
     Maps sliding residue windows to peptides via inverted min-max B-factors.
     """
-    if not (fetch_pdb and parse_pdb_bfactors and windowize and bfactors_to_peptides):
+    if not (parse_pdb_bfactors and windowize and bfactors_to_peptides):
         emit("PDB datasource helpers unavailable. Skipping.", kind="warn")
         return {"available": 0}
 
@@ -596,7 +604,16 @@ def demonstrate_folding_qa_pdb(
     emit(f"FOLDING QA (PDB) — {pdb_id}{(':'+chain) if chain else ''}", kind="notice")
     emit("=" * 60, kind="notice")
 
-    text = fetch_pdb(pdb_id)
+    # Load PDB text from file or network
+    if pdb_path:
+        text = read_pdb(pdb_path)
+        src_label = pdb_path
+    else:
+        if not (pdb_id and fetch_pdb):
+            emit("Either --pdb-path or --pdb-id is required.", kind="error")
+            return {"available": 0}
+        text = fetch_pdb(pdb_id)
+        src_label = pdb_id
     res_b = parse_pdb_bfactors(text, chain=chain)
     if not res_b:
         emit("No residues parsed from PDB (check chain).", kind="error")
@@ -607,8 +624,6 @@ def demonstrate_folding_qa_pdb(
     n_res = len(b_vals)
 
     immune = ImmuneSystem()
-    dendritic = immune.create_immune_cell(CellType.DENDRITIC)
-    b_cell = immune.create_immune_cell(CellType.B_CELL)
 
     results = {
         "windows": 0,
@@ -618,6 +633,7 @@ def demonstrate_folding_qa_pdb(
         "residues": n_res,
         "window_size": window_size,
         "stride": stride,
+        "educated": 0,
     }
 
     # Prepare windows; if sequence is shorter than window_size, pad a single window
@@ -626,19 +642,32 @@ def demonstrate_folding_qa_pdb(
         padded = pad_to_length(b_vals, target=window_size, mode="edge")
         win_list = [(0, padded)]
 
+    # Optionally educate thymus on first N windows BEFORE creating cells
+    if educate_first_n > 0 and win_list:
+        edu_count = min(educate_first_n, len(win_list))
+        for i in range(edu_count):
+            _start, w = win_list[i]
+            pep = bfactors_to_peptides(w)
+            immune.thymus.check_tolerance(pep)
+        results["educated"] = edu_count
+
+    # Create cells after education to inherit recognized_self
+    dendritic = immune.create_immune_cell(CellType.DENDRITIC)
+    b_cell = immune.create_immune_cell(CellType.B_CELL)
+
     with click.progressbar(win_list, label="Evaluating PDB windows") as bar:
         for start_idx, window in bar:
             if len(window) != window_size:
                 continue
-            # Convert B-factors to [0,1] peptides (lower B -> higher score)
-            peptides = bfactors_to_peptides(window).to(device)
-            # Consider properly folded (we're not labeling windows as misfolded here)
+            # Convert B-like values to [0,1] peptides per selected mode
+            peptides = bfactors_to_peptides(window, mode=bmap).to(device)
+            # Consider properly folded if requested; otherwise mean-based score
             antigen = Antigen(
                 epitope_id=f"{pdb_id}:{chain or ''}:{start_idx}",
                 peptides=peptides,
                 mhc_signature="",
                 presented_by=dendritic.cell_id,
-                folding_score=float(peptides.mean().item()),
+                folding_score=(1.0 if assume_folded else float(peptides.mean().item())),
             )
             with suppress_emits({"info", "notice", "warn", "error", "success"} if not VERBOSE else set()):
                 ok = dendritic.present_antigen(antigen)
@@ -658,8 +687,11 @@ def demonstrate_folding_qa_pdb(
                         results["complement_full"] += 1
 
     emit("\nPDB QA SUMMARY", kind="notice")
+    emit(f"  Source: {src_label}", kind="success")
     emit(f"  Residues: {results['residues']} | window={window_size} stride={stride}", kind="success")
     emit(f"  Windows: {results['windows']}", kind="success")
+    if results['educated']:
+        emit(f"  Educated windows: {results['educated']}", kind="success")
     emit(f"  Accepted (self-like): {results['accepted']}", kind="success")
     emit(f"  Foreign (non-self): {results['foreign']}", kind="success")
     emit(f"  Complement full successes: {results['complement_full']}", kind="success")
@@ -803,9 +835,15 @@ def timed_call(label: str, func, *args, **kwargs):
 @click.option("--folding-demo/--no-folding-demo", default=False, help="Run synthetic folding QA demonstration.")
 # PDB datasource options
 @click.option("--pdb-id", type=str, default=None, help="Fetch and evaluate a PDB ID (e.g., 1CRN).")
+@click.option("--pdb-path", type=str, default=None, help="Evaluate a local PDB file path.")
 @click.option("--chain", type=str, default=None, help="Chain identifier to select (optional).")
 @click.option("--window-size", type=int, default=48, help="Window size for PDB QA (default 48).")
 @click.option("--stride", type=int, default=16, help="Stride for PDB QA sliding windows.")
+@click.option("--educate-first-n", type=int, default=0, help="Educate thymus on the first N windows before evaluation.")
+@click.option("--bmap", type=click.Choice(["b_factor", "plddt", "auto"]), default="auto", help="Mapping of B-like values to peptides.")
+@click.option("--assume-folded/--no-assume-folded", default=False, help="Treat all PDB windows as properly folded for acceptance gate.")
+# Folding acceptance threshold override
+@click.option("--folding-threshold", type=float, default=0.95, help="Acceptance threshold for folding_score (0..1).")
 # Randomization controls
 @click.option("--fold-low", type=float, default=0.0, help="Lower bound for misfolded folding_score.")
 @click.option("--fold-high", type=float, default=0.9, help="Upper bound for misfolded folding_score.")
@@ -824,9 +862,14 @@ def cli(
     verbose: bool,
     folding_demo: bool,
     pdb_id: Optional[str],
+    pdb_path: Optional[str],
     chain: Optional[str],
     window_size: int,
     stride: int,
+    educate_first_n: int,
+    bmap: str,
+    assume_folded: bool,
+    folding_threshold: float,
     fold_low: float,
     fold_high: float,
     offset_min: int,
@@ -839,6 +882,9 @@ def cli(
     global VERBOSE
     VERBOSE = bool(verbose)
     click.secho(f"Device: {device}", fg="cyan")
+    # Apply folding threshold override
+    global FOLDING_THRESHOLD
+    FOLDING_THRESHOLD = float(max(0.0, min(1.0, folding_threshold)))
 
     demo_times: List[float] = []
     trial_times: List[float] = []
@@ -883,7 +929,7 @@ def cli(
             click.secho(f"Folding demo time: {dt*1000:.2f} ms", fg="green")
 
     pdb_results: Optional[Dict[str, int]] = None
-    if pdb_id:
+    if pdb_id or pdb_path:
         pdb_results, dt = timed_call(
             "pdb_demo",
             demonstrate_folding_qa_pdb,
@@ -891,6 +937,10 @@ def cli(
             chain=chain,
             window_size=window_size,
             stride=stride,
+            pdb_path=pdb_path,
+            educate_first_n=educate_first_n,
+            bmap=bmap,
+            assume_folded=assume_folded,
         )
         if benchmark:
             click.secho(f"PDB demo time: {dt*1000:.2f} ms", fg="green")
@@ -916,6 +966,7 @@ def cli(
         "folding_demo": bool(folding_demo),
         "folding_results": folding_results or {},
         "pdb_id": pdb_id or "",
+        "pdb_path": pdb_path or "",
         "chain": chain or "",
         "pdb_results": pdb_results or {},
     }
@@ -943,6 +994,7 @@ def cli(
             "seed": seed,
             "folding_demo": bool(folding_demo),
             "pdb_id": pdb_id or "",
+            "pdb_path": pdb_path or "",
             "chain": chain or "",
             "demo_mean_ms": round(demo_mean * 1000.0, 3),
             "demo_std_ms": round(demo_std * 1000.0, 3),
@@ -966,6 +1018,7 @@ def cli(
             "pdb_accept": (pdb_results or {}).get("accepted", 0),
             "pdb_foreign": (pdb_results or {}).get("foreign", 0),
             "pdb_complement_full": (pdb_results or {}).get("complement_full", 0),
+            "pdb_educated": (pdb_results or {}).get("educated", 0),
             "fold_low": fold_low,
             "fold_high": fold_high,
             "offset_min": offset_min,

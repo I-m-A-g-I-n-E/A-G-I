@@ -122,13 +122,24 @@ def _minmax(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     return (x - mn) / (mx - mn + eps)
 
 
-def bfactors_to_peptides(bfactors: Sequence[float]) -> torch.Tensor:
+def bfactors_to_peptides(bfactors: Sequence[float], mode: str = "b_factor") -> torch.Tensor:
     """
-    Map B-factors to wholeness scores.
-    Policy: higher B -> more disorder -> lower score.
-    We normalize B and invert: score = 1 - norm(B).
+    Map B-like values to [0,1] per-residue wholeness scores.
+    Modes:
+    - 'b_factor': higher B -> lower score (score = 1 - norm(B))
+    - 'plddt': higher pLDDT -> higher score (score = clamp(plddt/100,0,1))
+    - 'auto': detect pLDDT if max<=100, else use b_factor
     """
     t = torch.tensor(bfactors, dtype=torch.float32)
-    t_norm = _minmax(t)
-    score = 1.0 - t_norm
-    return score.clamp(0.0, 1.0)
+    use_mode = mode
+    if mode == "auto":
+        mx = float(t.max().item()) if t.numel() else 0.0
+        use_mode = "plddt" if mx <= 100.0 else "b_factor"
+    if use_mode == "plddt":
+        score = (t / 100.0).clamp(0.0, 1.0)
+    elif use_mode == "b_factor":
+        t_norm = _minmax(t)
+        score = 1.0 - t_norm
+    else:
+        raise ValueError("bfactors_to_peptides: unknown mode")
+    return score.to(dtype=torch.float32).clamp(0.0, 1.0)

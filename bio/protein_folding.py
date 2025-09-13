@@ -114,9 +114,12 @@ def generate_synthetic_windows(
         ))
 
     for i in range(n_foreign):
-        # Choose a large offset that won't match thymus self signatures
+        # Create a distinct shape so min-max normalization does not collapse it to the same ramp
         offset = 1000 + 37 * i
-        raw = torch.arange(MHC_SIZE, dtype=torch.float32) + offset
+        idx = torch.arange(MHC_SIZE, dtype=torch.float32)
+        # Sinusoidal modulation (different frequency/phase per i) + offset
+        mod = 5.0 * torch.sin(2.0 * torch.pi * (idx / MHC_SIZE) * (1 + (i % 3)) + (i * 0.7))
+        raw = idx + offset + mod
         pep = featurize_window(raw)
         fs = compute_folding_score(pep)
         windows.append(SyntheticWindow(
