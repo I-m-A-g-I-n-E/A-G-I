@@ -582,6 +582,90 @@ def demonstrate_folding_qa_synthetic() -> Dict[str, int]:
     return results
 
 
+def run_pdb_batch(
+    list_path: str,
+    *,
+    window_size: int,
+    stride: int,
+    bmap: str,
+    assume_folded: bool,
+    educate_first_n: int,
+) -> Dict[str, object]:
+    """
+    Process a list of PDB entries, one per line. Each line can be one of:
+      - PDBID[,CHAIN]
+      - /path/to/file.pdb[,CHAIN]
+    Returns a dict with per-entry results and aggregate totals.
+    """
+    try:
+        with open(list_path, "r") as f:
+            lines = [ln.strip() for ln in f if ln.strip() and not ln.strip().startswith('#')]
+    except Exception as e:
+        emit(f"Failed to read list: {e}", kind="error")
+        return {"entries": [], "totals": {}}
+
+    entries = []
+    for ln in lines:
+        # Parse line as token[,chain]
+        token, *rest = [p.strip() for p in ln.split(',')]
+        chain = rest[0] if rest else None
+        # Decide if token is path or PDB ID
+        is_path = ('/' in token) or token.lower().endswith('.pdb')
+        entries.append({"token": token, "chain": chain, "is_path": is_path})
+
+    results: List[Dict[str, object]] = []
+    totals = {
+        "windows": 0,
+        "accepted": 0,
+        "foreign": 0,
+        "complement_full": 0,
+        "structures": len(entries),
+    }
+
+    with click.progressbar(entries, label="Batch PDB QA") as bar:
+        for ent in bar:
+            token = ent["token"]
+            chain = ent["chain"]
+            is_path = ent["is_path"]
+            if is_path:
+                res = demonstrate_folding_qa_pdb(
+                    pdb_id=None,
+                    chain=chain,
+                    window_size=window_size,
+                    stride=stride,
+                    pdb_path=token,
+                    educate_first_n=educate_first_n,
+                    bmap=bmap,
+                    assume_folded=assume_folded,
+                )
+            else:
+                res = demonstrate_folding_qa_pdb(
+                    pdb_id=token,
+                    chain=chain,
+                    window_size=window_size,
+                    stride=stride,
+                    pdb_path=None,
+                    educate_first_n=educate_first_n,
+                    bmap=bmap,
+                    assume_folded=assume_folded,
+                )
+            res = dict(res)
+            res.update({"entry": token, "chain": chain or "", "source_is_path": bool(is_path)})
+            results.append(res)
+            # Accumulate totals if keys present
+            for k in ("windows", "accepted", "foreign", "complement_full"):
+                if k in res and isinstance(res[k], int):
+                    totals[k] += int(res[k])
+
+    emit("\nBATCH QA SUMMARY", kind="notice")
+    emit(f"  Structures: {totals['structures']}", kind="success")
+    emit(f"  Total windows: {totals['windows']}", kind="success")
+    emit(f"  Accepted: {totals['accepted']} | Foreign: {totals['foreign']}", kind="success")
+    emit(f"  Complement full successes: {totals['complement_full']}", kind="success")
+
+    return {"entries": results, "totals": totals}
+
+
 def demonstrate_folding_qa_pdb(
     pdb_id: Optional[str] = None,
     chain: Optional[str] = None,
@@ -844,6 +928,7 @@ def timed_call(label: str, func, *args, **kwargs):
 @click.option("--assume-folded/--no-assume-folded", default=False, help="Treat all PDB windows as properly folded for acceptance gate.")
 # Folding acceptance threshold override
 @click.option("--folding-threshold", type=float, default=0.95, help="Acceptance threshold for folding_score (0..1).")
+@click.option("--pdb-list", type=click.Path(exists=True, dir_okay=False, readable=True), default=None, help="Path to a text file of PDB IDs or PDB paths, one per line; optional ',CHAIN'.")
 # Randomization controls
 @click.option("--fold-low", type=float, default=0.0, help="Lower bound for misfolded folding_score.")
 @click.option("--fold-high", type=float, default=0.9, help="Upper bound for misfolded folding_score.")
@@ -870,6 +955,7 @@ def cli(
     bmap: str,
     assume_folded: bool,
     folding_threshold: float,
+    pdb_list: Optional[str],
     fold_low: float,
     fold_high: float,
     offset_min: int,
@@ -929,6 +1015,7 @@ def cli(
             click.secho(f"Folding demo time: {dt*1000:.2f} ms", fg="green")
 
     pdb_results: Optional[Dict[str, int]] = None
+    batch_results: Optional[Dict[str, object]] = None
     if pdb_id or pdb_path:
         pdb_results, dt = timed_call(
             "pdb_demo",
@@ -944,6 +1031,20 @@ def cli(
         )
         if benchmark:
             click.secho(f"PDB demo time: {dt*1000:.2f} ms", fg="green")
+
+    if pdb_list:
+        batch_results, dt = timed_call(
+            "pdb_batch",
+            run_pdb_batch,
+            list_path=pdb_list,
+            window_size=window_size,
+            stride=stride,
+            bmap=bmap,
+            assume_folded=assume_folded,
+            educate_first_n=educate_first_n,
+        )
+        if benchmark:
+            click.secho(f"PDB batch time: {dt*1000:.2f} ms", fg="green")
 
     # Centralized summary construction
     import json as _json
@@ -969,6 +1070,8 @@ def cli(
         "pdb_path": pdb_path or "",
         "chain": chain or "",
         "pdb_results": pdb_results or {},
+        "pdb_list": pdb_list or "",
+        "pdb_batch": batch_results or {},
     }
 
     # JSON output
@@ -987,6 +1090,39 @@ def cli(
         trial_mean = statistics.mean(trial_times) if trial_times else 0.0
         trial_std = statistics.pstdev(trial_times) if len(trial_times) > 1 else 0.0
         rate = (trials / trial_mean) if (trials and trial_mean > 0) else 0.0
+        # CSV output: if batch is present, write one row per entry; else one-line rollup
+        if batch_results and isinstance(batch_results.get("entries", None), list):
+            rows = []
+            for ent in batch_results["entries"]:  # type: ignore[index]
+                rows.append({
+                    "device": str(device),
+                    "pdb_entry": ent.get("entry", ""),
+                    "chain": ent.get("chain", ""),
+                    "source_is_path": ent.get("source_is_path", False),
+                    "windows": ent.get("windows", 0),
+                    "accepted": ent.get("accepted", 0),
+                    "foreign": ent.get("foreign", 0),
+                    "complement_full": ent.get("complement_full", 0),
+                    "educated": ent.get("educated", 0),
+                    "window_size": window_size,
+                    "stride": stride,
+                    "bmap": bmap,
+                    "assume_folded": assume_folded,
+                    "folding_threshold": FOLDING_THRESHOLD,
+                })
+            headers = list(rows[0].keys()) if rows else ["device", "pdb_entry"]
+            if csv_summary == "-":
+                writer = csv.DictWriter(click.get_text_stream('stdout'), fieldnames=headers)
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow(r)
+            else:
+                with open(csv_summary, "w", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=headers)
+                    writer.writeheader()
+                    writer.writerows(rows)
+            return
+
         row = {
             "device": str(device),
             "trials": trials,
@@ -995,6 +1131,7 @@ def cli(
             "folding_demo": bool(folding_demo),
             "pdb_id": pdb_id or "",
             "pdb_path": pdb_path or "",
+            "pdb_list": pdb_list or "",
             "chain": chain or "",
             "demo_mean_ms": round(demo_mean * 1000.0, 3),
             "demo_std_ms": round(demo_std * 1000.0, 3),

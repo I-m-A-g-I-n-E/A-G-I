@@ -1,0 +1,2 @@
+# Example PDB list
+1CRN,A

@@ -1,0 +1,4 @@
+# Crystal PDB IDs (ID,CHAIN)
+1CRN,A
+1UBQ,A
+1AKI,A

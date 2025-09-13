@@ -1,0 +1,4 @@
+device,pdb_entry,chain,source_is_path,windows,accepted,foreign,complement_full,educated,window_size,stride,bmap,assume_folded,folding_threshold
+mps,1CRN,A,False,1,1,0,1,1,48,16,b_factor,True,0.95
+mps,1UBQ,A,False,2,1,1,2,1,48,16,b_factor,True,0.95
+mps,1AKI,A,False,6,1,5,6,1,48,16,b_factor,True,0.95
