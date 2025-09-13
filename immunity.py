@@ -28,6 +28,21 @@ except Exception:
     generate_synthetic_windows = None  # type: ignore
     educate_thymus_from_synthetics = None  # type: ignore
 
+# Datasource helpers for real PDBs (no external deps)
+try:
+    from bio.datasources import (
+        fetch_pdb,
+        parse_pdb_bfactors,
+        windowize,
+        bfactors_to_peptides,
+        pad_to_length,
+    )
+except Exception:
+    fetch_pdb = None  # type: ignore
+    parse_pdb_bfactors = None  # type: ignore
+    windowize = None  # type: ignore
+    bfactors_to_peptides = None  # type: ignore
+
 # === Core Immune Constants ===
 # Route the canonical dimensionality through manifold for consistency
 MHC_SIZE = MANIFOLD_DIM  # MHC presents peptides of specific lengths
@@ -562,6 +577,95 @@ def demonstrate_folding_qa_synthetic() -> Dict[str, int]:
 
     return results
 
+
+def demonstrate_folding_qa_pdb(
+    pdb_id: str,
+    chain: Optional[str] = None,
+    window_size: int = MHC_SIZE,
+    stride: int = 16,
+) -> Dict[str, int]:
+    """
+    Real-structure folding QA using RCSB PDB and B-factors as a proxy for local order.
+    Maps sliding residue windows to peptides via inverted min-max B-factors.
+    """
+    if not (fetch_pdb and parse_pdb_bfactors and windowize and bfactors_to_peptides):
+        emit("PDB datasource helpers unavailable. Skipping.", kind="warn")
+        return {"available": 0}
+
+    emit("\n" + "=" * 60, kind="notice")
+    emit(f"FOLDING QA (PDB) — {pdb_id}{(':'+chain) if chain else ''}", kind="notice")
+    emit("=" * 60, kind="notice")
+
+    text = fetch_pdb(pdb_id)
+    res_b = parse_pdb_bfactors(text, chain=chain)
+    if not res_b:
+        emit("No residues parsed from PDB (check chain).", kind="error")
+        return {"residues": 0}
+
+    # Keep only the numeric B-factor sequence for windowization
+    b_vals = [b for (_uid, b) in res_b]
+    n_res = len(b_vals)
+
+    immune = ImmuneSystem()
+    dendritic = immune.create_immune_cell(CellType.DENDRITIC)
+    b_cell = immune.create_immune_cell(CellType.B_CELL)
+
+    results = {
+        "windows": 0,
+        "accepted": 0,
+        "foreign": 0,
+        "complement_full": 0,
+        "residues": n_res,
+        "window_size": window_size,
+        "stride": stride,
+    }
+
+    # Prepare windows; if sequence is shorter than window_size, pad a single window
+    win_list = list(windowize(b_vals, size=window_size, stride=stride))
+    if not win_list and len(b_vals) < window_size and len(b_vals) > 0:
+        padded = pad_to_length(b_vals, target=window_size, mode="edge")
+        win_list = [(0, padded)]
+
+    with click.progressbar(win_list, label="Evaluating PDB windows") as bar:
+        for start_idx, window in bar:
+            if len(window) != window_size:
+                continue
+            # Convert B-factors to [0,1] peptides (lower B -> higher score)
+            peptides = bfactors_to_peptides(window).to(device)
+            # Consider properly folded (we're not labeling windows as misfolded here)
+            antigen = Antigen(
+                epitope_id=f"{pdb_id}:{chain or ''}:{start_idx}",
+                peptides=peptides,
+                mhc_signature="",
+                presented_by=dendritic.cell_id,
+                folding_score=float(peptides.mean().item()),
+            )
+            with suppress_emits({"info", "notice", "warn", "error", "success"} if not VERBOSE else set()):
+                ok = dendritic.present_antigen(antigen)
+
+            results["windows"] += 1
+            if ok:
+                results["accepted"] += 1
+            else:
+                results["foreign"] += 1
+
+            with suppress_emits({"info", "notice", "warn", "error", "success"} if not VERBOSE else set()):
+                b_cell.mount_adaptive_response(antigen)
+                abs_full = b_cell.antibodies.get(antigen.epitope_id, [])
+                if abs_full:
+                    mac = immune.complement.activate_cascade(abs_full)
+                    if mac is not None:
+                        results["complement_full"] += 1
+
+    emit("\nPDB QA SUMMARY", kind="notice")
+    emit(f"  Residues: {results['residues']} | window={window_size} stride={stride}", kind="success")
+    emit(f"  Windows: {results['windows']}", kind="success")
+    emit(f"  Accepted (self-like): {results['accepted']}", kind="success")
+    emit(f"  Foreign (non-self): {results['foreign']}", kind="success")
+    emit(f"  Complement full successes: {results['complement_full']}", kind="success")
+
+    return results
+
 def run_randomized_trials(
     trials: int = 5,
     seed: int = 42,
@@ -697,6 +801,11 @@ def timed_call(label: str, func, *args, **kwargs):
 @click.option("--verbose/--no-verbose", default=False, help="Verbose logging (per-step emits).")
 # Folding QA demo flag
 @click.option("--folding-demo/--no-folding-demo", default=False, help="Run synthetic folding QA demonstration.")
+# PDB datasource options
+@click.option("--pdb-id", type=str, default=None, help="Fetch and evaluate a PDB ID (e.g., 1CRN).")
+@click.option("--chain", type=str, default=None, help="Chain identifier to select (optional).")
+@click.option("--window-size", type=int, default=48, help="Window size for PDB QA (default 48).")
+@click.option("--stride", type=int, default=16, help="Stride for PDB QA sliding windows.")
 # Randomization controls
 @click.option("--fold-low", type=float, default=0.0, help="Lower bound for misfolded folding_score.")
 @click.option("--fold-high", type=float, default=0.9, help="Upper bound for misfolded folding_score.")
@@ -714,6 +823,10 @@ def cli(
     csv_summary: Optional[str],
     verbose: bool,
     folding_demo: bool,
+    pdb_id: Optional[str],
+    chain: Optional[str],
+    window_size: int,
+    stride: int,
     fold_low: float,
     fold_high: float,
     offset_min: int,
@@ -769,6 +882,19 @@ def cli(
         if benchmark:
             click.secho(f"Folding demo time: {dt*1000:.2f} ms", fg="green")
 
+    pdb_results: Optional[Dict[str, int]] = None
+    if pdb_id:
+        pdb_results, dt = timed_call(
+            "pdb_demo",
+            demonstrate_folding_qa_pdb,
+            pdb_id=pdb_id,
+            chain=chain,
+            window_size=window_size,
+            stride=stride,
+        )
+        if benchmark:
+            click.secho(f"PDB demo time: {dt*1000:.2f} ms", fg="green")
+
     # Centralized summary construction
     import json as _json
     summary = {
@@ -789,6 +915,9 @@ def cli(
         "last_results": last_results or {},
         "folding_demo": bool(folding_demo),
         "folding_results": folding_results or {},
+        "pdb_id": pdb_id or "",
+        "chain": chain or "",
+        "pdb_results": pdb_results or {},
     }
 
     # JSON output
@@ -813,6 +942,8 @@ def cli(
             "repeat": repeat,
             "seed": seed,
             "folding_demo": bool(folding_demo),
+            "pdb_id": pdb_id or "",
+            "chain": chain or "",
             "demo_mean_ms": round(demo_mean * 1000.0, 3),
             "demo_std_ms": round(demo_std * 1000.0, 3),
             "trials_mean_s": round(trial_mean, 6),
@@ -829,6 +960,12 @@ def cli(
             "fold_misfold_reject": (folding_results or {}).get("misfold_reject", 0),
             "fold_complement_full": (folding_results or {}).get("complement_full", 0),
             "fold_complement_partial": (folding_results or {}).get("complement_partial", 0),
+            # PDB summary
+            "pdb_windows": (pdb_results or {}).get("windows", 0),
+            "pdb_residues": (pdb_results or {}).get("residues", 0),
+            "pdb_accept": (pdb_results or {}).get("accepted", 0),
+            "pdb_foreign": (pdb_results or {}).get("foreign", 0),
+            "pdb_complement_full": (pdb_results or {}).get("complement_full", 0),
             "fold_low": fold_low,
             "fold_high": fold_high,
             "offset_min": offset_min,
