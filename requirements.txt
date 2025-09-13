@@ -3,3 +3,4 @@ torch
 matplotlib
 jupyterlab
 click
+scipy
