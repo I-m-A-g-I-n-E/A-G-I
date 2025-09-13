@@ -54,6 +54,29 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     with open(qc_path, 'w') as fh:
         json.dump(report, fh, indent=2)
     print(f"   - Wrote QC report to {qc_path}")
+    # 5. Optional refinement
+    print("🎼 Beginning refinement rehearsal...")
+    if args.refine:
+        initial_torsions = [(float(phi[i]), float(psi[i])) for i in range(len(phi))]
+        refined_torsions, refined_backbone = conductor.refine_torsions(
+            initial_torsions, modes, seq, max_iters=args.refine_iters, step_deg=args.refine_step, seed=args.refine_seed
+        )
+        refined_pdb_path = output_pdb.replace('.pdb', '_refined.pdb')
+        conductor.save_to_pdb(refined_backbone, refined_pdb_path)
+        # QC for refined
+        rphi = np.array([t[0] for t in refined_torsions])
+        rpsi = np.array([t[1] for t in refined_torsions])
+        qc_refined = conductor.quality_check(refined_backbone, rphi, rpsi, modes)
+        qc_refined_path = output_pdb.rsplit('.', 1)[0] + "_refined_qc.json"
+        with open(qc_refined_path, 'w') as fh:
+            json.dump(qc_refined, fh, indent=2)
+        print("\n" + "=" * 50)
+        print("  Rehearsal Complete")
+        print(f"  - Initial Clashes: {report['summary']['num_clashes']}")
+        print(f"  - Refined Clashes: {qc_refined['summary']['num_clashes']}")
+        print(f"  - View refined structure: pymol {refined_pdb_path}")
+        print("=" * 50)
+    
     print("\n" + "=" * 50)
     print("  Structure Generation Complete")
     print(f"  - View the result with: pymol {output_pdb}")
@@ -66,6 +89,10 @@ if __name__ == "__main__":
     parser.add_argument("--output-pdb", required=True, help="Path to save the final PDB file (e.g., outputs/structure.pdb)")
     parser.add_argument("--sequence", required=False, help="Protein sequence as one-letter codes (e.g., ACDEFGH)")
     parser.add_argument("--sequence-file", required=False, help="Path to a file containing the protein sequence")
+    parser.add_argument("--refine", action="store_true", help="Enable torsion refinement pass")
+    parser.add_argument("--refine-iters", type=int, default=150, dest="refine_iters", help="Max refinement iterations")
+    parser.add_argument("--refine-step", type=float, default=2.0, dest="refine_step", help="Refinement step size in degrees")
+    parser.add_argument("--refine-seed", type=int, default=None, dest="refine_seed", help="Random seed for refinement")
     args = parser.parse_args()
 
     generate(args.input_prefix, args.output_pdb, args.sequence, args.sequence_file)

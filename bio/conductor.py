@@ -201,6 +201,62 @@ class Conductor:
         ], axis=0)
         return backbone, phi, psi, modes
 
+    # -------------------------
+    # Backbone builder from torsions
+    # -------------------------
+    def build_backbone_from_torsions(self, torsions: np.ndarray, sequence: str) -> np.ndarray:
+        """Builds the N-CA-C backbone from an explicit list/array of (phi, psi) torsions.
+
+        Args:
+            torsions: array-like (L, 2) of (phi, psi) in degrees per residue
+            sequence: protein sequence; used only for length L
+
+        Returns:
+            backbone np.ndarray (L, 3, 3)
+        """
+        L = len(sequence)
+        torsions = np.asarray(torsions, dtype=np.float32)
+        assert torsions.shape[0] == L, "torsions length must equal sequence length"
+
+        phi = torsions[:, 0]
+        psi = torsions[:, 1]
+
+        # Ideal parameters
+        b_N_CA = IDEAL_GEOMETRY["N-CA"]
+        b_CA_C = IDEAL_GEOMETRY["CA-C"]
+        b_C_N = IDEAL_GEOMETRY["C-N"]
+        ang_CA_C_N = IDEAL_GEOMETRY["CA-C-N_angle"]
+        ang_C_N_CA = IDEAL_GEOMETRY["C-N-CA_angle"]
+        ang_N_CA_C = IDEAL_GEOMETRY["N-CA-C_angle"]
+        omega = 180.0
+
+        # Seed first residue
+        N0 = np.array([0.0, 0.0, 0.0])
+        CA0 = np.array([b_N_CA, 0.0, 0.0])
+        theta = np.deg2rad(180.0 - ang_N_CA_C)
+        C0 = CA0 + np.array([b_CA_C * np.cos(theta), b_CA_C * np.sin(theta), 0.0])
+
+        N_coords = [N0]
+        CA_coords = [CA0]
+        C_coords = [C0]
+
+        for i in range(1, L):
+            Ni = place_next_atom(N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1],
+                                 length=b_C_N, angle=ang_CA_C_N, torsion=psi[i - 1])
+            CAi = place_next_atom(CA_coords[i - 1], C_coords[i - 1], Ni,
+                                  length=b_N_CA, angle=ang_C_N_CA, torsion=omega)
+            Ci = place_next_atom(C_coords[i - 1], Ni, CAi,
+                                 length=b_CA_C, angle=ang_N_CA_C, torsion=phi[i])
+            N_coords.append(Ni)
+            CA_coords.append(CAi)
+            C_coords.append(Ci)
+
+        backbone = np.stack([
+            np.stack([N_coords[i], CA_coords[i], C_coords[i]], axis=0)
+            for i in range(L)
+        ], axis=0)
+        return backbone
+
     def save_to_pdb(self, coords: np.ndarray, filename: str):
         """Saves backbone coordinates to a PDB file.
 
@@ -345,3 +401,87 @@ class Conductor:
             "clashes": clashes,
         }
         return report
+
+    # -------------------------
+    # Dissonance and Refinement
+    # -------------------------
+    def calculate_dissonance(self, backbone: np.ndarray, torsions: np.ndarray, modes: list[str], weights: dict) -> float:
+        """Calculates a weighted Dissonance Score for a given conformation."""
+        L = backbone.shape[0]
+        N = backbone[:, 0, :]
+        CA = backbone[:, 1, :]
+        C = backbone[:, 2, :]
+
+        # Physical: CA-CA deviation from 3.8 Å
+        ca_ca = np.array([np.linalg.norm(CA[i] - CA[i-1]) for i in range(1, L)], dtype=np.float32)
+        E_ca = float(np.mean((ca_ca - 3.8) ** 2)) if L > 1 else 0.0
+
+        # Physical: repulsive for non-adjacent atoms closer than 3.2 Å
+        atoms = [N, CA, C]
+        rep = 0.0
+        thr = 3.2
+        for i in range(L):
+            for j in range(i+3, L):
+                # min atom-atom distance between residues i and j
+                dmin = min(np.linalg.norm(A[i] - B[j]) for A in atoms for B in atoms)
+                if dmin < thr:
+                    rep += float((thr - dmin) ** 2)
+        E_clash = rep / max(1, L)
+
+        # Harmony: smoothness (finite difference of torsions)
+        t = np.asarray(torsions, dtype=np.float32)
+        if t.shape[0] > 1:
+            dt = t[1:] - t[:-1]
+            E_smooth = float(np.mean(dt ** 2))
+        else:
+            E_smooth = 0.0
+
+        # Harmony: snap distance to nearest bin per mode
+        from .scale_and_meter import SCALE_TABLE
+        snap_errs = []
+        for i in range(L):
+            bins = SCALE_TABLE[modes[i]]
+            diff = bins - t[i]
+            d = np.min(np.linalg.norm(diff, axis=1))
+            snap_errs.append(d)
+        E_snap = float(np.mean(np.square(snap_errs))) if snap_errs else 0.0
+
+        w = weights
+        total = (w['ca'] * E_ca + w['clash'] * E_clash + w['smooth'] * E_smooth + w['snap'] * E_snap)
+        return float(total)
+
+    def refine_torsions(self, phi_psi_initial: list, modes: list[str], sequence: str,
+                        max_iters: int = 150, step_deg: float = 2.0, seed: int | None = None) -> tuple[list, np.ndarray]:
+        """
+        Refines a set of torsion angles to minimize dissonance while staying on-key.
+        Returns (refined_torsions_list, refined_backbone)
+        """
+        torsions = np.array(phi_psi_initial, dtype=np.float32)
+        L = torsions.shape[0]
+        rng = np.random.default_rng(seed)
+        weights = {'ca': 1.0, 'clash': 1.5, 'smooth': 0.2, 'snap': 0.5}
+
+        # Evaluate initial
+        bb_curr = self.build_backbone_from_torsions(torsions, sequence)
+        best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)
+
+        for _ in range(max_iters):
+            k = max(1, L // 5)
+            idxs = rng.choice(L, size=k, replace=False)
+            prop = torsions.copy()
+            prop[idxs] += rng.uniform(-step_deg, step_deg, size=(k, 2)).astype(np.float32)
+            # snap to scale
+            for idx in idxs:
+                phi, psi = prop[idx]
+                sphi, spsi = snap_to_scale(modes[idx], float(phi), float(psi))
+                prop[idx, 0] = sphi
+                prop[idx, 1] = spsi
+
+            bb_prop = self.build_backbone_from_torsions(prop, sequence)
+            score_prop = self.calculate_dissonance(bb_prop, prop, modes, weights)
+            if score_prop < best_score:
+                torsions = prop
+                bb_curr = bb_prop
+                best_score = score_prop
+
+        return torsions.tolist(), bb_curr
