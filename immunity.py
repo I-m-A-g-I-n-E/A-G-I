@@ -18,6 +18,15 @@ import statistics
 import csv
 
 from manifold import device, MANIFOLD_DIM, keven, kodd
+# Folding QA adapters (synthetic, dependency-free)
+try:
+    from bio.protein_folding import (
+        generate_synthetic_windows,
+        educate_thymus_from_synthetics,
+    )
+except Exception:
+    generate_synthetic_windows = None  # type: ignore
+    educate_thymus_from_synthetics = None  # type: ignore
 
 # === Core Immune Constants ===
 # Route the canonical dimensionality through manifold for consistency
@@ -41,9 +50,31 @@ _COLORS = {
     "error": "red",
 }
 
+# Global verbosity and suppression controls
+VERBOSE: bool = True
+SUPPRESS_KINDS: Set[str] = set()
+
 def emit(msg: str, kind: str = "info") -> None:
+    """Centralized logging with verbosity and per-kind suppression."""
+    if kind in SUPPRESS_KINDS:
+        return
+    if not VERBOSE and kind in {"info", "notice"}:
+        return
     color = _COLORS.get(kind, None)
     click.secho(msg, fg=color)
+
+from contextlib import contextmanager
+
+@contextmanager
+def suppress_emits(kinds: Set[str]):
+    """Temporarily suppress a set of emit kinds (e.g., {"warn","error"})."""
+    global SUPPRESS_KINDS
+    prev = SUPPRESS_KINDS.copy()
+    SUPPRESS_KINDS |= set(kinds)
+    try:
+        yield
+    finally:
+        SUPPRESS_KINDS = prev
 
 class CellType(Enum):
     """Representative immune cell types with mapped roles (analog)"""
@@ -351,15 +382,15 @@ def demonstrate_immune_analog():
     emit("=" * 60, kind="notice")
     emit("IMMUNE SYSTEM ANALOG DEMONSTRATION", kind="notice")
     emit("=" * 60, kind="notice")
-    
+
     # Initialize immune system
     immune = ImmuneSystem()
-    
+
     emit("\n1. CELL DIFFERENTIATION (Account Creation):", kind="info")
     t_cell = immune.create_immune_cell(CellType.T_CELL)
     b_cell = immune.create_immune_cell(CellType.B_CELL)
     dendritic = immune.create_immune_cell(CellType.DENDRITIC)
-    
+
     emit("\n2. SELF-ANTIGEN PRESENTATION (analog: whole-bundle reception):", kind="info")
     # Create properly folded self-antigen
     self_antigen = Antigen(
@@ -370,7 +401,7 @@ def demonstrate_immune_analog():
         folding_score=1.0
     )
     dendritic.present_antigen(self_antigen)
-    
+
     emit("\n3. MISFOLDED PROTEIN REJECTION (decimation prevention):", kind="info")
     # Try to present misfolded protein (decimated value)
     misfolded = Antigen(
@@ -381,7 +412,7 @@ def demonstrate_immune_analog():
         folding_score=0.3  # Severely misfolded
     )
     dendritic.present_antigen(misfolded)
-    
+
     emit("\n4. FOREIGN ANTIGEN RESPONSE (non-self detection):", kind="info")
     # Present foreign but properly structured antigen
     foreign_antigen = Antigen(
@@ -392,7 +423,7 @@ def demonstrate_immune_analog():
         folding_score=1.0
     )
     dendritic.present_antigen(foreign_antigen)
-    
+
     emit("\n5. ANTIBODY GENERATION (share creation):", kind="info")
     # B-cell produces antibodies (explicitly mounted here)
     b_cell.mount_adaptive_response(foreign_antigen)
@@ -400,7 +431,7 @@ def demonstrate_immune_analog():
         antibodies = b_cell.antibodies[foreign_antigen.epitope_id]
         emit(f"   B-cell generated {len(antibodies)} antibodies", kind="info")
         emit(f"   Each antibody covers {antibodies[0].valency} epitopes", kind="info")
-    
+
     emit("\n6. COMPLEMENT CASCADE (wholification):", kind="info")
     # Activate complement to form MAC
     if foreign_antigen.epitope_id in b_cell.antibodies:
@@ -409,19 +440,19 @@ def demonstrate_immune_analog():
         )
         if mac is not None:
             emit("   Complete neutralization achieved", kind="success")
-    
+
     emit("\n7. CLONAL SELECTION (atomic verification):", kind="info")
     # Select cells that maintain integrity
     selected = immune.clonal_selector.select_and_proliferate(self_antigen)
     emit(f"   {len(selected)} cells selected for proliferation", kind="info")
-    
+
     emit("\n8. SYSTEM INTEGRITY CHECK (homeostasis):", kind="info")
     immune.check_system_integrity()
-    
+
     emit("\n" + "=" * 60, kind="notice")
     emit("KEY ANALOG CORRESPONDENCES:", kind="notice")
     emit("=" * 60, kind="notice")
-    
+
     parallels = [
         ("Whole Bundle", "=", "Properly Folded Protein"),
         ("Decimated Value", "=", "Misfolded/Denatured Protein"),
@@ -436,10 +467,10 @@ def demonstrate_immune_analog():
         ("Factor 2/3 Split", "=", "Binary/Ternary Immune Response"),
         ("Reversible Operations", "=", "Immune Memory"),
     ]
-    
+
     for left, eq, right in parallels:
         emit(f"  {left:20s} {eq} {right}", kind="info")
-    
+
     emit("\n" + "=" * 60, kind="notice")
     emit("MODEL SIGNALS:", kind="notice")
     emit("  In this model, integrity is enforced by:", kind="info")
@@ -450,6 +481,86 @@ def demonstrate_immune_analog():
     emit("  - Maintaining memory of what belongs", kind="info")
     emit("  - Operating through reversible recognition", kind="info")
     emit("=" * 60, kind="notice")
+
+
+def demonstrate_folding_qa_synthetic() -> Dict[str, int]:
+    """
+    Synthetic folding QA demonstration using 48-residue windows mapped to the
+    immune analog. Requires bio.protein_folding adapters.
+    """
+    if generate_synthetic_windows is None or educate_thymus_from_synthetics is None:
+        emit("Folding QA adapters unavailable. Skipping.", kind="warn")
+        return {"available": 0}
+
+    emit("\n" + "=" * 60, kind="notice")
+    emit("FOLDING QA (SYNTHETIC) DEMONSTRATION", kind="notice")
+    emit("=" * 60, kind="notice")
+
+    immune = ImmuneSystem()
+    windows = generate_synthetic_windows(n_self=4, n_mis=4, n_foreign=4, seed=42)
+    n_added = educate_thymus_from_synthetics(immune, windows)
+    emit(f"Thymus educated on {n_added} self windows", kind="notice")
+
+    # Create cells AFTER education so they inherit updated self-recognition
+    dendritic = immune.create_immune_cell(CellType.DENDRITIC)
+    b_cell = immune.create_immune_cell(CellType.B_CELL)
+
+    results = {
+        "self_accept": 0,
+        "foreign_detect": 0,
+        "misfold_reject": 0,
+        "complement_full": 0,
+        "complement_partial": 0,
+        "total": len(windows),
+    }
+
+    # Batch with progress and suppress noisy per-item logs
+    with click.progressbar(windows, label="Evaluating windows", length=len(windows)) as bar:
+        for w in bar:
+            folding_ok = w.folding_score if w.kind == "misfolded" else 1.0
+            antigen = Antigen(
+                epitope_id=w.epitope_id,
+                peptides=w.peptides.to(device),
+                mhc_signature="",
+                presented_by=dendritic.cell_id,
+                folding_score=folding_ok,
+            )
+
+            with suppress_emits({"info", "notice", "warn", "error", "success"} if not VERBOSE else set()):
+                ok = dendritic.present_antigen(antigen)
+            # Tally results
+            if w.kind == "self" and ok:
+                results["self_accept"] += 1
+            if w.kind == "foreign" and not ok:
+                results["foreign_detect"] += 1
+            if w.kind == "misfolded" and not ok:
+                results["misfold_reject"] += 1
+
+            # Mount antibodies to test coverage/complement
+            if w.kind != "misfolded":
+                with suppress_emits({"info", "notice", "warn", "error", "success"} if not VERBOSE else set()):
+                    b_cell.mount_adaptive_response(antigen)
+                    abs_full = b_cell.antibodies.get(antigen.epitope_id, [])
+                    if abs_full:
+                        mac = immune.complement.activate_cascade(abs_full)
+                        if mac is not None:
+                            results["complement_full"] += 1
+                        # Partial coverage: drop one antibody if available
+                        abs_partial = abs_full[:-1] if len(abs_full) > 1 else []
+                        if abs_partial:
+                            mac_p = immune.complement.activate_cascade(abs_partial)
+                            if mac_p is None:
+                                results["complement_partial"] += 1
+
+    emit("\nSYNTHETIC QA SUMMARY", kind="notice")
+    emit(f"  Total windows: {results['total']}", kind="info")
+    emit(f"  Self accepted: {results['self_accept']}", kind="success")
+    emit(f"  Foreign detected: {results['foreign_detect']}", kind="success")
+    emit(f"  Misfold rejected: {results['misfold_reject']}", kind="success")
+    emit(f"  Complement full successes: {results['complement_full']}", kind="success")
+    emit(f"  Complement partial rejections (expected None): {results['complement_partial']}", kind="success")
+
+    return results
 
 def run_randomized_trials(
     trials: int = 5,
@@ -582,6 +693,10 @@ def timed_call(label: str, func, *args, **kwargs):
 @click.option("--repeat", type=int, default=1, help="Repeat runs for benchmarking; prints may be verbose.")
 @click.option("--json-summary", type=click.Path(dir_okay=False, writable=True), default=None, help="Write JSON summary to file (or '-' for stdout).")
 @click.option("--csv-summary", type=click.Path(dir_okay=False, writable=True), default=None, help="Write CSV summary to file (or '-' for stdout).")
+# Verbosity
+@click.option("--verbose/--no-verbose", default=False, help="Verbose logging (per-step emits).")
+# Folding QA demo flag
+@click.option("--folding-demo/--no-folding-demo", default=False, help="Run synthetic folding QA demonstration.")
 # Randomization controls
 @click.option("--fold-low", type=float, default=0.0, help="Lower bound for misfolded folding_score.")
 @click.option("--fold-high", type=float, default=0.9, help="Upper bound for misfolded folding_score.")
@@ -597,6 +712,8 @@ def cli(
     repeat: int,
     json_summary: Optional[str],
     csv_summary: Optional[str],
+    verbose: bool,
+    folding_demo: bool,
     fold_low: float,
     fold_high: float,
     offset_min: int,
@@ -605,6 +722,9 @@ def cli(
     shuffle_sites: bool,
 ):
     """CLI for the immune-system analog demo and randomized tests with timing and summaries."""
+    # Set verbosity
+    global VERBOSE
+    VERBOSE = bool(verbose)
     click.secho(f"Device: {device}", fg="cyan")
 
     demo_times: List[float] = []
@@ -642,6 +762,13 @@ def cli(
             rate = trials / mean if mean > 0 else float('inf')
             click.secho(f"Trials: {trials} | mean={mean:.3f}s, std={std:.3f}s ({rate:.1f} trials/s)", fg="green")
 
+    # Folding QA synthetic demo (optional)
+    folding_results: Optional[Dict[str, int]] = None
+    if folding_demo:
+        folding_results, dt = timed_call("folding_demo", demonstrate_folding_qa_synthetic)
+        if benchmark:
+            click.secho(f"Folding demo time: {dt*1000:.2f} ms", fg="green")
+
     # Centralized summary construction
     import json as _json
     summary = {
@@ -660,6 +787,8 @@ def cli(
             "shuffle_sites": shuffle_sites,
         },
         "last_results": last_results or {},
+        "folding_demo": bool(folding_demo),
+        "folding_results": folding_results or {},
     }
 
     # JSON output
@@ -683,6 +812,7 @@ def cli(
             "trials": trials,
             "repeat": repeat,
             "seed": seed,
+            "folding_demo": bool(folding_demo),
             "demo_mean_ms": round(demo_mean * 1000.0, 3),
             "demo_std_ms": round(demo_std * 1000.0, 3),
             "trials_mean_s": round(trial_mean, 6),
@@ -693,6 +823,12 @@ def cli(
             "foreign_detect_pass": (last_results or {}).get("foreign_detect_pass", 0),
             "complement_full_pass": (last_results or {}).get("complement_full_pass", 0),
             "complement_partial_pass": (last_results or {}).get("complement_partial_pass", 0),
+            # Folding summary rollups (if present)
+            "fold_self_accept": (folding_results or {}).get("self_accept", 0),
+            "fold_foreign_detect": (folding_results or {}).get("foreign_detect", 0),
+            "fold_misfold_reject": (folding_results or {}).get("misfold_reject", 0),
+            "fold_complement_full": (folding_results or {}).get("complement_full", 0),
+            "fold_complement_partial": (folding_results or {}).get("complement_partial", 0),
             "fold_low": fold_low,
             "fold_high": fold_high,
             "offset_min": offset_min,
