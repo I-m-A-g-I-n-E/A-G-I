@@ -8,6 +8,16 @@ Test 2: Checks if the Sonifier can produce sound from a known, non-silent test s
 import torch
 import numpy as np
 import os
+import sys
+
+# Allow running as a script: `python bio/debug_sonifier.py`
+# When executed this way, sys.path[0] is the bio/ directory, so `import bio.*` fails.
+# Add the project root to sys.path so that `bio` is importable as a package.
+if __package__ in (None, ""):
+    proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if proj_root not in sys.path:
+        sys.path.insert(0, proj_root)
+
 from bio.sonifier import TrinitySonifier
 
 def run_diagnostics():

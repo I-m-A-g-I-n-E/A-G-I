@@ -103,6 +103,9 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     # 6. Optional 3-channel sonification
     if args.sonify_3ch and args.audio_wav:
         print("🎶 Orchestrating 3-channel sonification...")
+        if args.amplify != 1.0:
+            mean_composition = mean_composition * args.amplify
+
         # Key (kore) from key estimator
         from bio.key_estimator import estimate_key_and_modes
         kore_vector, _ = estimate_key_and_modes(mean_composition if mean_composition.ndim == 2 else mean_composition.unsqueeze(0), seq)
@@ -165,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--sonify-3ch", action="store_true", dest="sonify_3ch", help="Enable 3-channel sonification output.")
     parser.add_argument("--audio-wav", default=None, dest="audio_wav", help="Output path for the 3-channel WAV file.")
     parser.add_argument("--bpm", type=float, default=96.0, help="Tempo for time grid (48 ticks per bar).")
+    parser.add_argument("--amplify", type=float, default=1.0, help="Linear gain factor to apply to the composition vector before sonification.")
     parser.add_argument("--wc-kore", type=float, default=1.5, dest="wc_kore", help="Weight for kore projection in center channel.")
     parser.add_argument("--wc-cert", type=float, default=1.0, dest="wc_cert", help="Weight for harmonic certainty in center channel.")
     parser.add_argument("--wc-diss", type=float, default=2.5, dest="wc_diss", help="Weight for dissonance in center channel.")
