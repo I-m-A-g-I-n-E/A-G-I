@@ -169,8 +169,9 @@ class TrinitySonifier:
             cg = float(center_weights.get('kore', 1.0)) * kore_proj \
                  + float(center_weights.get('cert', 1.0)) * float(cert[i].item()) \
                  - float(center_weights.get('diss', 1.0)) * float(diss[i].item())
-            # squash to [0,1]
-            center_gain = float(1.0 / (1.0 + np.exp(-cg)))
+            # squash to [0,1] with numeric stability
+            cg_clip = float(np.clip(cg, -20.0, 20.0))
+            center_gain = float(1.0 / (1.0 + np.exp(-cg_clip)))
 
             mono = 0.5 * (L_sig + R_sig)
             C_sig = lp_filter(mono) * center_gain

@@ -5,3 +5,4 @@ Updated_CCCT_Framework_Moore_Atlas.pages
 *.pyc
 
 outputs/*
+.DS_Store

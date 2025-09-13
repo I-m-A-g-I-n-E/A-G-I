@@ -125,22 +125,14 @@ class Conductor:
             final_torsions[start:end] = segment_refined
             start = end
 
-        # Convert to phi/psi arrays with the convention used by the NERF builder
+        # Convert to phi/psi arrays (per-residue). Canonical convention:
+        # For i >= 1, we place CA(i) with phi(i) and C(i) with psi(i).
         phi = np.zeros(num_residues)
         psi = np.zeros(num_residues)
-        # Use phi[i] for residue i and psi[i-1] for peptide between i-1 and i
         for i in range(num_residues):
             ph, ps = final_torsions[i]
             phi[i] = ph
-            if i > 0:
-                psi[i-1] = ps
-        # Reasonable defaults for termini
-        if num_residues > 1:
-            psi[num_residues - 1] = psi[num_residues - 2]
-            phi[0] = phi[1]
-        else:
-            psi[0] = -47.0
-            phi[0] = -57.0
+            psi[i] = ps
 
         # Ideal parameters
         b_N_CA = IDEAL_GEOMETRY["N-CA"]
@@ -166,28 +158,28 @@ class Conductor:
         CA_coords = [CA0]
         C_coords = [C0]
 
-        # Build subsequent residues using NERF
+        # Build subsequent residues using canonical sequential NeRF
         for i in range(1, num_residues):
-            # Place N(i) using (N(i-1), CA(i-1), C(i-1)) and psi(i-1)
+            # Place N(i) using (N(i-1), CA(i-1), C(i-1)) and omega (trans peptide)
             Ni = place_next_atom(
                 N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1],
                 length=b_C_N,
                 angle=ang_CA_C_N,
-                torsion=psi[i - 1],
+                torsion=omega,
             )
-            # Place CA(i) using (CA(i-1), C(i-1), N(i)) and omega
+            # Place CA(i) using (CA(i-1), C(i-1), N(i)) and phi(i)
             CAi = place_next_atom(
                 CA_coords[i - 1], C_coords[i - 1], Ni,
                 length=b_N_CA,
                 angle=ang_C_N_CA,
-                torsion=omega,
+                torsion=phi[i],
             )
-            # Place C(i) using (C(i-1), N(i), CA(i)) and phi(i)
+            # Place C(i) using (C(i-1), N(i), CA(i)) and psi(i)
             Ci = place_next_atom(
                 C_coords[i - 1], Ni, CAi,
                 length=b_CA_C,
                 angle=ang_N_CA_C,
-                torsion=phi[i],
+                torsion=psi[i],
             )
 
             N_coords.append(Ni)
@@ -241,12 +233,13 @@ class Conductor:
         C_coords = [C0]
 
         for i in range(1, L):
+            # Canonical sequential NeRF
             Ni = place_next_atom(N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1],
-                                 length=b_C_N, angle=ang_CA_C_N, torsion=psi[i - 1])
+                                 length=b_C_N, angle=ang_CA_C_N, torsion=omega)
             CAi = place_next_atom(CA_coords[i - 1], C_coords[i - 1], Ni,
-                                  length=b_N_CA, angle=ang_C_N_CA, torsion=omega)
+                                  length=b_N_CA, angle=ang_C_N_CA, torsion=phi[i])
             Ci = place_next_atom(C_coords[i - 1], Ni, CAi,
-                                 length=b_CA_C, angle=ang_N_CA_C, torsion=phi[i])
+                                 length=b_CA_C, angle=ang_N_CA_C, torsion=psi[i])
             N_coords.append(Ni)
             CA_coords.append(CAi)
             C_coords.append(Ci)

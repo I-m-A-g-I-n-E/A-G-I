@@ -7,6 +7,8 @@ in PDB format.
 """
 import argparse
 import json
+import os
+import shutil
 import numpy as np
 import torch
 from bio.conductor import Conductor
@@ -47,6 +49,13 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
 
     # 3. Save the final structure to a PDB file
     conductor.save_to_pdb(backbone, output_pdb)
+    # Also save an initial-labeled copy for artifact continuity
+    base_noext = output_pdb.rsplit('.', 1)[0]
+    initial_pdb = base_noext + "_initial.pdb"
+    try:
+        shutil.copyfile(output_pdb, initial_pdb)
+    except Exception as e:
+        print(f"   - Warning: could not create initial-labeled PDB copy: {e}")
 
     # 4. Run QC and save a report
     report = conductor.quality_check(backbone, phi, psi, modes)
@@ -54,6 +63,13 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     with open(qc_path, 'w') as fh:
         json.dump(report, fh, indent=2)
     print(f"   - Wrote QC report to {qc_path}")
+    # Also save an initial-labeled QC copy for artifact continuity
+    initial_qc_path = base_noext + "_initial_qc.json"
+    try:
+        with open(initial_qc_path, 'w') as fh:
+            json.dump(report, fh, indent=2)
+    except Exception as e:
+        print(f"   - Warning: could not create initial-labeled QC copy: {e}")
     # Compute initial dissonance score for sonification center weighting
     init_weights = {
         'clash': 1.5,
@@ -103,12 +119,10 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     # 6. Optional 3-channel sonification
     if args.sonify_3ch and args.audio_wav:
         print("🎶 Orchestrating 3-channel sonification...")
+        # Start with composition; apply amplification
+        comp = mean_composition.clone() if isinstance(mean_composition, torch.Tensor) else mean_composition
         if args.amplify != 1.0:
-            mean_composition = mean_composition * args.amplify
-
-        # Key (kore) from key estimator
-        from bio.key_estimator import estimate_key_and_modes
-        kore_vector, _ = estimate_key_and_modes(mean_composition if mean_composition.ndim == 2 else mean_composition.unsqueeze(0), seq)
+            comp = comp * float(args.amplify)
 
         # Certainty from ensemble file if available
         cert_path = f"{input_prefix}_certainty.npy"
@@ -119,28 +133,50 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         except Exception as e:
             print(f"   - Warning: could not load certainty at {cert_path}: {e}. Using uniform certainty.")
             # Default to 1.0 per window; infer windows from composition
-            W = mean_composition.shape[0] if mean_composition.ndim == 2 else 48
-            harmonic_certainty = torch.ones((int(W),), dtype=torch.float32)
+            W_def = comp.shape[0] if getattr(comp, 'ndim', 1) == 2 else 48
+            harmonic_certainty = torch.ones((int(W_def),), dtype=torch.float32)
 
-        # Prepare dissonance vectors per window
+        # Repeat windows if requested
+        repeat = int(max(1, args.repeat_windows))
+        if repeat > 1:
+            if isinstance(comp, torch.Tensor):
+                if comp.ndim == 1:
+                    comp = comp.unsqueeze(0).repeat(repeat, 1)
+                else:
+                    comp = comp.repeat(repeat, 1)
+            else:
+                # fall back to numpy then convert back to torch if needed later
+                arr = comp if isinstance(comp, np.ndarray) else np.asarray(comp)
+                if arr.ndim == 1:
+                    arr = np.tile(arr.reshape(1, -1), (repeat, 1))
+                else:
+                    arr = np.tile(arr, (repeat, 1))
+                comp = torch.from_numpy(arr.astype(np.float32))
+            # repeat certainty as well
+            harmonic_certainty = harmonic_certainty.repeat(repeat)
+
+        # Key (kore) from key estimator — use windowed comp if 2D, else expand
+        from bio.key_estimator import estimate_key_and_modes
+        kore_input = comp if (isinstance(comp, torch.Tensor) and comp.ndim == 2) else comp.unsqueeze(0)
+        kore_vector, _ = estimate_key_and_modes(kore_input, seq)
+
+        # Prepare dissonance vectors per window (match certainty length)
         Wc = int(harmonic_certainty.shape[0])
         diss_init_vec = torch.tensor([dissonance_initial] * Wc, dtype=torch.float32)
         diss_ref_vec = torch.tensor([dissonance_refined] * Wc, dtype=torch.float32)
 
-        # Sonify using TrinitySonifier
+        # Sonify using TrinitySonifier with ergonomic stride control
         from bio.sonifier import TrinitySonifier
         center_weights = {'kore': args.wc_kore, 'cert': args.wc_cert, 'diss': args.wc_diss}
-        sonifier = TrinitySonifier(bpm=args.bpm)
-        # composition input may be [48] or [W,48]; both are supported by method
+        sonifier = TrinitySonifier(bpm=args.bpm, stride_ticks=args.stride_ticks)
         wav_initial = sonifier.sonify_composition_3ch(
-            mean_composition, kore_vector, harmonic_certainty, diss_init_vec, center_weights
+            comp, kore_vector, harmonic_certainty, diss_init_vec, center_weights
         )
         sonifier.save_wav(wav_initial, args.audio_wav.replace('.wav', '_initial.wav'))
 
         if args.refine:
-            # Using the same composition but different dissonance highlights improvement
             wav_refined = sonifier.sonify_composition_3ch(
-                mean_composition, kore_vector, harmonic_certainty, diss_ref_vec, center_weights
+                comp, kore_vector, harmonic_certainty, diss_ref_vec, center_weights
             )
             sonifier.save_wav(wav_refined, args.audio_wav.replace('.wav', '_refined.wav'))
 
@@ -169,6 +205,21 @@ if __name__ == "__main__":
     parser.add_argument("--audio-wav", default=None, dest="audio_wav", help="Output path for the 3-channel WAV file.")
     parser.add_argument("--bpm", type=float, default=96.0, help="Tempo for time grid (48 ticks per bar).")
     parser.add_argument("--amplify", type=float, default=1.0, help="Linear gain factor to apply to the composition vector before sonification.")
+    parser.add_argument(
+        "--stride-ticks",
+        type=int,
+        default=16,
+        choices=[1, 2, 3, 4, 6, 8, 12, 16, 24, 48],
+        dest="stride_ticks",
+        help="Number of ticks per window (controls note duration)."
+    )
+    parser.add_argument(
+        "--repeat-windows",
+        type=int,
+        default=1,
+        dest="repeat_windows",
+        help="Tile the composition across time to extend short sequences."
+    )
     parser.add_argument("--wc-kore", type=float, default=1.5, dest="wc_kore", help="Weight for kore projection in center channel.")
     parser.add_argument("--wc-cert", type=float, default=1.0, dest="wc_cert", help="Weight for harmonic certainty in center channel.")
     parser.add_argument("--wc-diss", type=float, default=2.5, dest="wc_diss", help="Weight for dissonance in center channel.")
