@@ -731,7 +731,7 @@ def demonstrate_folding_qa_pdb(
         edu_count = min(educate_first_n, len(win_list))
         for i in range(edu_count):
             _start, w = win_list[i]
-            pep = bfactors_to_peptides(w)
+            pep = bfactors_to_peptides(w, mode=bmap)
             immune.thymus.check_tolerance(pep)
         results["educated"] = edu_count
 
