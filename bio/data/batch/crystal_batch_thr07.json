@@ -1,0 +1,74 @@
+{
+  "device": "mps",
+  "demo_ms": [],
+  "trials": 0,
+  "trial_times_s": [],
+  "repeat": 1,
+  "seed": 42,
+  "randomization": {
+    "fold_low": 0.0,
+    "fold_high": 0.9,
+    "offset_min": 1000,
+    "offset_max": 100000,
+    "factor_k_max": 3,
+    "shuffle_sites": true
+  },
+  "last_results": {},
+  "folding_demo": false,
+  "folding_results": {},
+  "pdb_id": "",
+  "pdb_path": "",
+  "chain": "",
+  "pdb_results": {},
+  "pdb_list": "crystals_list.txt",
+  "pdb_batch": {
+    "entries": [
+      {
+        "windows": 1,
+        "accepted": 0,
+        "foreign": 1,
+        "complement_full": 1,
+        "residues": 46,
+        "window_size": 48,
+        "stride": 16,
+        "educated": 1,
+        "entry": "1CRN",
+        "chain": "A",
+        "source_is_path": false
+      },
+      {
+        "windows": 2,
+        "accepted": 0,
+        "foreign": 2,
+        "complement_full": 2,
+        "residues": 76,
+        "window_size": 48,
+        "stride": 16,
+        "educated": 1,
+        "entry": "1UBQ",
+        "chain": "A",
+        "source_is_path": false
+      },
+      {
+        "windows": 6,
+        "accepted": 0,
+        "foreign": 6,
+        "complement_full": 6,
+        "residues": 129,
+        "window_size": 48,
+        "stride": 16,
+        "educated": 1,
+        "entry": "1AKI",
+        "chain": "A",
+        "source_is_path": false
+      }
+    ],
+    "totals": {
+      "windows": 9,
+      "accepted": 0,
+      "foreign": 9,
+      "complement_full": 9,
+      "structures": 3
+    }
+  }
+}

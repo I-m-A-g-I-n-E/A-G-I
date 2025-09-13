@@ -1,4 +1,0 @@
-device,pdb_entry,chain,source_is_path,windows,accepted,foreign,complement_full,educated,window_size,stride,bmap,assume_folded,folding_threshold
-mps,af_pdbs/AF-P69905-F1-model_v4.pdb,,True,6,1,5,6,1,48,16,b_factor,True,0.95
-mps,af_pdbs/AF-P68871-F1-model_v4.pdb,,True,7,1,6,7,1,48,16,b_factor,True,0.95
-mps,af_pdbs/AF-P05067-F1-model_v4.pdb,,True,46,1,45,46,1,48,16,b_factor,True,0.95
