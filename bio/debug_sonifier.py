@@ -31,7 +31,7 @@ def run_diagnostics():
     if not os.path.exists(mean_comp_path):
         print(f"❌ ERROR: Input file not found at {mean_comp_path}")
         print("   ACTION: Please run `compose_protein.py` first to generate the input.")
-        return
+        return  
 
     mean_composition = torch.from_numpy(np.load(mean_comp_path))
     

@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import json
 from typing import Optional
+import subprocess
 
 import click
 import numpy as np
@@ -206,6 +207,118 @@ def sonify(input_prefix: str, output_wav: str, sequence: Optional[str], bpm: flo
     ensure_dir_for(output_wav)
     pipeline.save_wav(wave, output_wav)
     click.echo(f"Saved: {output_wav}")
+
+
+# -------------------------
+# play (compose → structure → sonify)
+# -------------------------
+
+@cli.command()
+@click.option('--sequence', required=True, help='Amino acid sequence (>=48 residues).')
+@click.option('--samples', type=int, default=1, show_default=True)
+@click.option('--variability', type=float, default=0.0, show_default=True)
+@click.option('--seed', type=int, default=None)
+@click.option('--window-jitter', is_flag=True, default=False, show_default=True)
+@click.option('--save-prefix', type=str, required=True, help='Prefix path to save ensemble outputs (without extension).')
+@click.option('--output-pdb', required=True, help='Path to save the final PDB file (e.g., outputs/structure.pdb)')
+@click.option('--refine', is_flag=True, default=False, show_default=True, help='Enable torsion refinement pass')
+@click.option('--refine-iters', type=int, default=150, show_default=True)
+@click.option('--refine-step', type=float, default=2.0, show_default=True)
+@click.option('--refine-seed', type=int, default=None)
+@click.option('--w-clash', type=float, default=1.5, show_default=True)
+@click.option('--w-ca', type=float, default=1.0, show_default=True)
+@click.option('--w-smooth', type=float, default=0.2, show_default=True)
+@click.option('--w-snap', type=float, default=0.5, show_default=True)
+# Sonification
+@click.option('--sonify-3ch', is_flag=True, default=False, show_default=True)
+@click.option('--audio-wav', type=str, default=None, help='Output path for the 3-channel WAV file.')
+@click.option('--bpm', type=float, default=96.0, show_default=True)
+@click.option('--stride-ticks', type=int, default=16, show_default=True)
+@click.option('--amplify', type=float, default=1.0, show_default=True, help='Gain factor for composition before sonify')
+@click.option('--wc-kore', type=float, default=1.5, show_default=True)
+@click.option('--wc-cert', type=float, default=1.0, show_default=True)
+@click.option('--wc-diss', type=float, default=2.5, show_default=True)
+@click.option('--repeat-windows', type=int, default=1, show_default=True)
+def play(sequence: str, samples: int, variability: float, seed: Optional[int], window_jitter: bool,
+         save_prefix: str, output_pdb: str, refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
+         w_clash: float, w_ca: float, w_smooth: float, w_snap: float, sonify_3ch: bool, audio_wav: Optional[str], bpm: float,
+         stride_ticks: int, amplify: float, wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
+    """One-shot pipeline: compose → structure (optional refine) → optional 3ch sonify."""
+    # Compose and save ensemble
+    mean, certainty = pipeline.compose_sequence(
+        sequence.strip().upper(),
+        samples=max(1, int(samples)),
+        variability=max(0.0, min(1.0, variability)),
+        seed=seed,
+        window_jitter=bool(window_jitter),
+    )
+    prefix = os.path.expanduser(save_prefix)
+    os.makedirs(os.path.dirname(prefix) or '.', exist_ok=True)
+    np.save(f"{prefix}_mean.npy", mean.cpu().numpy())
+    np.save(f"{prefix}_certainty.npy", certainty.cpu().numpy())
+    click.echo(f"💾 Saved ensemble: {prefix}_mean.npy, {prefix}_certainty.npy")
+
+    # Optional amplification and repetition
+    comp = mean.clone()
+    if amplify != 1.0:
+        comp = comp * float(amplify)
+    if repeat_windows > 1:
+        comp = comp.repeat(int(max(1, repeat_windows)), 1)
+        certainty = certainty.repeat(int(max(1, repeat_windows)))
+
+    # Conduct
+    backbone, phi, psi, modes, conductor = pipeline.conduct_backbone(comp, sequence.strip().upper())
+    ensure_dir_for(output_pdb)
+    conductor.save_to_pdb(backbone, output_pdb)
+
+    # QC
+    qc = pipeline.quality_report(conductor, backbone, phi, psi, modes)
+    qc_path = output_pdb.rsplit('.', 1)[0] + '_qc.json'
+    save_json(qc, qc_path)
+
+    # Optional refine
+    if refine:
+        weights = {'clash': w_clash, 'ca': w_ca, 'smooth': w_smooth, 'snap': w_snap}
+        refined_torsions, refined_backbone = pipeline.refine_backbone(
+            conductor, backbone, phi, psi, modes, sequence.strip().upper(),
+            max_iters=int(refine_iters), step_deg=float(refine_step), seed=refine_seed, weights=weights,
+        )
+        ref_pdb = output_pdb.replace('.pdb', '_refined.pdb')
+        conductor.save_to_pdb(refined_backbone, ref_pdb)
+        rphi = np.array([t[0] for t in refined_torsions], dtype=np.float32)
+        rpsi = np.array([t[1] for t in refined_torsions], dtype=np.float32)
+        qc_ref = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        qc_ref_path = output_pdb.rsplit('.', 1)[0] + '_refined_qc.json'
+        save_json(qc_ref, qc_ref_path)
+
+    # Optional 3ch sonify
+    if sonify_3ch and audio_wav:
+        kore = pipeline.estimate_kore(comp, sequence.strip().upper())
+        W = int(certainty.shape[0])
+        # Use initial/ refined dissonance scalars — approximate with 0.0 if not refined yet
+        diss_scalar = 0.0
+        diss_vec = pipeline.dissonance_scalar_to_vec(float(diss_scalar), W)
+        wave = pipeline.sonify_3ch(comp, kore, certainty, diss_vec, bpm=bpm, stride_ticks=stride_ticks,
+                                   center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
+        pipeline.save_wav(wave, audio_wav)
+        click.echo(f"Saved audio: {audio_wav}")
+
+    click.echo("\n=== Play Complete ===")
+    click.echo(f"PDB: {output_pdb}")
+    click.echo(f"QC:  {qc_path}")
+
+
+# -------------------------
+# immunity passthrough (delegates to immunity.py)
+# -------------------------
+
+@cli.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+@click.argument('args', nargs=-1, type=click.UNPROCESSED)
+def immunity(args):
+    """Delegate to the existing immunity.py CLI with passthrough options."""
+    cmd = ["python3", "immunity.py", *list(args)]
+    click.echo("Running: " + " ".join(cmd))
+    subprocess.run(cmd, check=True)
 
 
 if __name__ == '__main__':

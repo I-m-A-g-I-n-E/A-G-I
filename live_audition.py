@@ -32,36 +32,28 @@ import torch
 # Local imports
 from bio.sonifier import TrinitySonifier
 from bio.conductor import Conductor
+from bio.utils import load_ensemble
 
 
 def ensure_ensemble(prefix: str) -> tuple[torch.Tensor, torch.Tensor]:
-    mean_path = Path(f"{prefix}_mean.npy")
-    cert_path = Path(f"{prefix}_certainty.npy")
-    if mean_path.exists() and cert_path.exists():
-        mean = torch.from_numpy(np.load(mean_path))
-        cert = torch.from_numpy(np.load(cert_path))
-        # Ensure shapes: mean -> [W,48] if [48] expand to [1,48]
-        if mean.ndim == 1 and mean.shape[0] == 48:
-            mean = mean.unsqueeze(0)
+    try:
+        mean, cert = load_ensemble(prefix)
         return mean.to(torch.float32), cert.to(torch.float32)
-
-    # Fallback: run compose_protein.py for a quick ensemble
-    print("[live] Ensemble files not found; running compose_protein.py to generate...")
-    cmd = [
-        "python3", "compose_protein.py",
-        "--samples", "10",
-        "--variability", "0.5",
-        "--seed", "42",
-        "--window-jitter",
-        "--save-prefix", prefix,
-        "--save-format", "npy",
-    ]
-    subprocess.run(cmd, check=True)
-    mean = torch.from_numpy(np.load(mean_path))
-    cert = torch.from_numpy(np.load(cert_path))
-    if mean.ndim == 1 and mean.shape[0] == 48:
-        mean = mean.unsqueeze(0)
-    return mean.to(torch.float32), cert.to(torch.float32)
+    except Exception:
+        # Fallback: run compose_protein.py for a quick ensemble
+        print("[live] Ensemble files not found; running compose_protein.py to generate...")
+        cmd = [
+            "python3", "compose_protein.py",
+            "--samples", "10",
+            "--variability", "0.5",
+            "--seed", "42",
+            "--window-jitter",
+            "--save-prefix", prefix,
+            "--save-format", "npy",
+        ]
+        subprocess.run(cmd, check=True)
+        mean, cert = load_ensemble(prefix)
+        return mean.to(torch.float32), cert.to(torch.float32)
 
 
 def run_performance(params: Dict[str, Any], iteration: int) -> None:

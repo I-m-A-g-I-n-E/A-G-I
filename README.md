@@ -32,7 +32,47 @@ Notes:
 
 ## Quick starts
 
-### 1) Compose → Structure → Sonify
+### Unified CLI (recommended)
+
+Use the unified `agi.py` CLI to run the end-to-end flows. Existing scripts still work and are shown below.
+
+```bash
+# Compose and save ensemble
+python3 agi.py compose \
+  --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG \
+  --samples 8 --variability 0.5 --seed 42 --window-jitter \
+  --save-prefix outputs/ubiquitin_ensemble --save-format npy
+
+# Structure from ensemble (+ optional refine and 3ch WAV)
+python3 agi.py structure \
+  --input-prefix outputs/ubiquitin_ensemble \
+  --output-pdb outputs/ubiquitin_fold_full.pdb \
+  --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRLRGG \
+  --refine --refine-iters 300 --refine-step 2.0 --refine-seed 123 \
+  --sonify-3ch --audio-wav outputs/ubiquitin.wav \
+  --bpm 96 --stride-ticks 16 --amplify 1.0 --wc-kore 1.5 --wc-cert 1.0 --wc-diss 2.5
+
+# Sonify directly from ensemble into a single 3-channel WAV (T,3)
+python3 agi.py sonify \
+  --input-prefix outputs/ubiquitin_ensemble \
+  --output-wav outputs/ubiquitin_3ch.wav \
+  --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRLRGG \
+  --bpm 96 --stride-ticks 16 --dissonance 0.0 --wc-kore 1.5 --wc-cert 1.0 --wc-diss 2.5
+
+# One-shot pipeline: compose → structure (optional refine) → optional 3ch sonify
+python3 agi.py play \
+  --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRLRGG \
+  --samples 8 --variability 0.5 --seed 42 --window-jitter \
+  --save-prefix outputs/ubiquitin_ensemble \
+  --output-pdb outputs/ubiquitin_fold_full.pdb \
+  --refine --refine-iters 300 --refine-step 2.0 --refine-seed 123 \
+  --sonify-3ch --audio-wav outputs/ubiquitin.wav
+
+# Immune analog passthrough (delegates to immunity.py)
+python3 agi.py immunity -- --help
+```
+
+### 1) Compose → Structure → Sonify (scripts)
 
 Use the provided CLIs to go end-to-end. Ensure your sequence has length ≥ 48.
 
