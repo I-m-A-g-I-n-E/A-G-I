@@ -16,6 +16,7 @@ import numpy as np
 import torch
 try:
     from scipy.io import wavfile
+    from scipy.signal import butter, lfilter
     _HAS_SCIPY = True
 except Exception:
     _HAS_SCIPY = False
@@ -74,6 +75,113 @@ class TrinitySonifier:
         a = amps.reshape(-1, 1)
         y = (a * waves).sum(axis=0)
         return y.astype(np.float32)
+
+    def sonify_composition_3ch(
+        self,
+        composition_vectors: torch.Tensor,
+        kore_vector: torch.Tensor,
+        certainty: torch.Tensor,
+        dissonance: torch.Tensor,
+        center_weights: dict,
+        center_lp_hz: float = 400.0,
+    ) -> np.ndarray:
+        """
+        Generate a 3-channel waveform (L=keven, R=kodd, C=kore hinge) directly from 48D composition.
+
+        Args:
+            composition_vectors: [W,48] or [48] torch tensor
+            kore_vector: [48] torch tensor (global kore/tonic vector)
+            certainty: [W] torch tensor in [0,1]
+            dissonance: [W] torch tensor (arbitrary scale); higher reduces center gain
+            center_weights: dict with keys {'kore','cert','diss'}
+            center_lp_hz: low-pass cutoff for center channel
+
+        Returns:
+            ndarray [T,3] float32 in [-1,1] (not peak-normalized; call save_wav to normalize)
+        """
+        comp = composition_vectors.detach().cpu()
+        if comp.ndim == 1:
+            W = int(certainty.shape[0])
+            comp = comp.unsqueeze(0).repeat(W, 1)
+        W, D = comp.shape
+        assert D == 48, "Expected 48D composition vectors"
+
+        cert = certainty.detach().cpu().float().view(-1)
+        diss = dissonance.detach().cpu().float().view(-1)
+        if cert.shape[0] != W:
+            if cert.shape[0] < W:
+                reps = int(np.ceil(W / float(cert.shape[0])))
+                cert = cert.repeat(reps)[:W]
+            else:
+                cert = cert[:W]
+        if diss.shape[0] != W:
+            if diss.shape[0] < W:
+                reps = int(np.ceil(W / float(diss.shape[0])))
+                diss = diss.repeat(reps)[:W]
+            else:
+                diss = diss[:W]
+
+        kore = kore_vector.detach().cpu().float().view(-1)
+        # Precompute even/odd indices and harmonic frequencies
+        ke_idx = np.arange(0, 48, 2)
+        ko_idx = np.arange(1, 48, 2)
+        freqs = self.part_freqs.astype(np.float64)
+        t = np.linspace(0.0, self.window_duration, self.window_n, endpoint=False, dtype=np.float64)
+
+        # Prepare LPF if scipy available; else simple moving average fallback
+        if _HAS_SCIPY and center_lp_hz is not None and center_lp_hz > 0.0:
+            b, a = butter(2, center_lp_hz, btype='low', fs=self.sample_rate)
+            def lp_filter(x: np.ndarray) -> np.ndarray:
+                return lfilter(b, a, x).astype(np.float32)
+        else:
+            k = max(1, int(self.sample_rate * 0.002))  # ~2 ms window
+            window = np.ones(k, dtype=np.float32) / float(k)
+            def lp_filter(x: np.ndarray) -> np.ndarray:
+                if x.size < k:
+                    return x.astype(np.float32)
+                y = np.convolve(x.astype(np.float32), window, mode='same')
+                return y.astype(np.float32)
+
+        out = np.zeros((self.window_n * W, 3), dtype=np.float32)
+
+        for i in range(W):
+            v = comp[i].numpy()
+            keven = v[ke_idx]
+            kodd = v[ko_idx]
+            # pad/crop to partials
+            if keven.shape[0] < self.partials:
+                ke_p = np.pad(keven, (0, self.partials - keven.shape[0]))
+                ko_p = np.pad(kodd, (0, self.partials - kodd.shape[0]))
+            else:
+                ke_p = keven[: self.partials]
+                ko_p = kodd[: self.partials]
+            # mild companding for stability
+            ke_p = np.tanh(ke_p)
+            ko_p = np.tanh(ko_p)
+
+            phase = 2.0 * np.pi * freqs.reshape(-1, 1) * t.reshape(1, -1)
+            L_sig = (ke_p.reshape(-1, 1) * np.cos(phase)).sum(axis=0).astype(np.float32)
+            R_sig = (ko_p.reshape(-1, 1) * np.sin(phase)).sum(axis=0).astype(np.float32)
+
+            # Center gain via kore projection + certainty - dissonance
+            denom = (np.linalg.norm(v) * (float(torch.linalg.norm(kore).item()) + 1e-12) + 1e-12)
+            kore_proj = float(np.dot(v, kore.numpy()) / denom)
+            cg = float(center_weights.get('kore', 1.0)) * kore_proj \
+                 + float(center_weights.get('cert', 1.0)) * float(cert[i].item()) \
+                 - float(center_weights.get('diss', 1.0)) * float(diss[i].item())
+            # squash to [0,1]
+            center_gain = float(1.0 / (1.0 + np.exp(-cg)))
+
+            mono = 0.5 * (L_sig + R_sig)
+            C_sig = lp_filter(mono) * center_gain
+
+            s = i * self.window_n
+            e = s + self.window_n
+            out[s:e, 0] = L_sig
+            out[s:e, 1] = R_sig
+            out[s:e, 2] = C_sig
+
+        return out
 
     def sonify_composition(
         self,
@@ -141,16 +249,26 @@ class TrinitySonifier:
         return L, C, R
 
     def save_wav(self, wave: np.ndarray, path: str, peak_dbfs: float = -1.0) -> None:
-        w = _normalize_wave(wave, peak_dbfs=peak_dbfs)
+        """Save mono or multi-channel waveform with normalization and safe headroom.
+
+        Accepts shapes (T,) or (T,C). Uses float32 when scipy is available; otherwise falls back to
+        16-bit PCM via the builtin wave module.
+        """
+        w = np.asarray(wave, dtype=np.float32)
+        w = _normalize_wave(w, peak_dbfs=peak_dbfs)
         if _HAS_SCIPY:
             wavfile.write(path, self.sample_rate, w)
         else:
             # Fallback: write 16-bit PCM using builtin wave module
-            import wave, struct
+            import wave
             # Convert float32 [-1,1] to int16
             w16 = np.clip((w * 32767.0), -32768, 32767).astype(np.int16)
             with wave.open(path, 'wb') as wf:
-                wf.setnchannels(1)
+                n_channels = 1 if w16.ndim == 1 else w16.shape[1]
+                wf.setnchannels(n_channels)
                 wf.setsampwidth(2)
                 wf.setframerate(self.sample_rate)
-                wf.writeframes(w16.tobytes())
+                if n_channels == 1:
+                    wf.writeframes(w16.tobytes())
+                else:
+                    wf.writeframes(w16.reshape(-1,).tobytes())

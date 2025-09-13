@@ -54,6 +54,16 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     with open(qc_path, 'w') as fh:
         json.dump(report, fh, indent=2)
     print(f"   - Wrote QC report to {qc_path}")
+    # Compute initial dissonance score for sonification center weighting
+    init_weights = {
+        'clash': 1.5,
+        'ca': 1.0,
+        'smooth': 0.2,
+        'snap': 0.5,
+    }
+    torsions_init = np.stack([phi, psi], axis=1)
+    dissonance_initial = conductor.calculate_dissonance(backbone, torsions_init, modes, init_weights)
+
     # 5. Optional refinement
     print("🎼 Beginning refinement rehearsal...")
     if args.refine:
@@ -78,13 +88,59 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         qc_refined_path = output_pdb.rsplit('.', 1)[0] + "_refined_qc.json"
         with open(qc_refined_path, 'w') as fh:
             json.dump(qc_refined, fh, indent=2)
+        # Dissonance for refined
+        torsions_ref = np.stack([rphi, rpsi], axis=1)
+        dissonance_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
         print("\n" + "=" * 50)
         print("  Rehearsal Complete")
         print(f"  - Initial Clashes: {report['summary']['num_clashes']}")
         print(f"  - Refined Clashes: {qc_refined['summary']['num_clashes']}")
         print(f"  - View refined structure: pymol {refined_pdb_path}")
         print("=" * 50)
+    else:
+        dissonance_refined = dissonance_initial
     
+    # 6. Optional 3-channel sonification
+    if args.sonify_3ch and args.audio_wav:
+        print("🎶 Orchestrating 3-channel sonification...")
+        # Key (kore) from key estimator
+        from bio.key_estimator import estimate_key_and_modes
+        kore_vector, _ = estimate_key_and_modes(mean_composition if mean_composition.ndim == 2 else mean_composition.unsqueeze(0), seq)
+
+        # Certainty from ensemble file if available
+        cert_path = f"{input_prefix}_certainty.npy"
+        try:
+            certainty_arr = np.load(cert_path)
+            harmonic_certainty = torch.from_numpy(certainty_arr.astype(np.float32)).view(-1)
+            print(f"   - Loaded certainty from {cert_path} (len={len(harmonic_certainty)})")
+        except Exception as e:
+            print(f"   - Warning: could not load certainty at {cert_path}: {e}. Using uniform certainty.")
+            # Default to 1.0 per window; infer windows from composition
+            W = mean_composition.shape[0] if mean_composition.ndim == 2 else 48
+            harmonic_certainty = torch.ones((int(W),), dtype=torch.float32)
+
+        # Prepare dissonance vectors per window
+        Wc = int(harmonic_certainty.shape[0])
+        diss_init_vec = torch.tensor([dissonance_initial] * Wc, dtype=torch.float32)
+        diss_ref_vec = torch.tensor([dissonance_refined] * Wc, dtype=torch.float32)
+
+        # Sonify using TrinitySonifier
+        from bio.sonifier import TrinitySonifier
+        center_weights = {'kore': args.wc_kore, 'cert': args.wc_cert, 'diss': args.wc_diss}
+        sonifier = TrinitySonifier(bpm=args.bpm)
+        # composition input may be [48] or [W,48]; both are supported by method
+        wav_initial = sonifier.sonify_composition_3ch(
+            mean_composition, kore_vector, harmonic_certainty, diss_init_vec, center_weights
+        )
+        sonifier.save_wav(wav_initial, args.audio_wav.replace('.wav', '_initial.wav'))
+
+        if args.refine:
+            # Using the same composition but different dissonance highlights improvement
+            wav_refined = sonifier.sonify_composition_3ch(
+                mean_composition, kore_vector, harmonic_certainty, diss_ref_vec, center_weights
+            )
+            sonifier.save_wav(wav_refined, args.audio_wav.replace('.wav', '_refined.wav'))
+
     print("\n" + "=" * 50)
     print("  Structure Generation Complete")
     print(f"  - View the result with: pymol {output_pdb}")
@@ -105,6 +161,14 @@ if __name__ == "__main__":
     parser.add_argument("--w-ca", type=float, default=1.0, dest="w_ca", help="Weight for CA-CA distance penalty in dissonance")
     parser.add_argument("--w-smooth", type=float, default=0.2, dest="w_smooth", help="Weight for torsion smoothness penalty")
     parser.add_argument("--w-snap", type=float, default=0.5, dest="w_snap", help="Weight for scale snapping penalty")
+    # Sonification controls
+    parser.add_argument("--sonify-3ch", action="store_true", dest="sonify_3ch", help="Enable 3-channel sonification output.")
+    parser.add_argument("--audio-wav", default=None, dest="audio_wav", help="Output path for the 3-channel WAV file.")
+    parser.add_argument("--bpm", type=float, default=96.0, help="Tempo for time grid (48 ticks per bar).")
+    parser.add_argument("--wc-kore", type=float, default=1.5, dest="wc_kore", help="Weight for kore projection in center channel.")
+    parser.add_argument("--wc-cert", type=float, default=1.0, dest="wc_cert", help="Weight for harmonic certainty in center channel.")
+    parser.add_argument("--wc-diss", type=float, default=2.5, dest="wc_diss", help="Weight for dissonance in center channel.")
     args = parser.parse_args()
 
     generate(args.input_prefix, args.output_pdb, args.sequence, args.sequence_file)
+    
