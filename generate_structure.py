@@ -57,9 +57,17 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     # 5. Optional refinement
     print("🎼 Beginning refinement rehearsal...")
     if args.refine:
+        weights = {
+            'clash': args.w_clash,
+            'ca': args.w_ca,
+            'smooth': args.w_smooth,
+            'snap': args.w_snap,
+        }
+        print(f"   - Refinement weights: {weights}")
         initial_torsions = [(float(phi[i]), float(psi[i])) for i in range(len(phi))]
         refined_torsions, refined_backbone = conductor.refine_torsions(
-            initial_torsions, modes, seq, max_iters=args.refine_iters, step_deg=args.refine_step, seed=args.refine_seed
+            initial_torsions, modes, seq, max_iters=args.refine_iters, step_deg=args.refine_step, seed=args.refine_seed,
+            weights=weights
         )
         refined_pdb_path = output_pdb.replace('.pdb', '_refined.pdb')
         conductor.save_to_pdb(refined_backbone, refined_pdb_path)
@@ -93,6 +101,10 @@ if __name__ == "__main__":
     parser.add_argument("--refine-iters", type=int, default=150, dest="refine_iters", help="Max refinement iterations")
     parser.add_argument("--refine-step", type=float, default=2.0, dest="refine_step", help="Refinement step size in degrees")
     parser.add_argument("--refine-seed", type=int, default=None, dest="refine_seed", help="Random seed for refinement")
+    parser.add_argument("--w-clash", type=float, default=1.5, dest="w_clash", help="Weight for clash penalty in dissonance")
+    parser.add_argument("--w-ca", type=float, default=1.0, dest="w_ca", help="Weight for CA-CA distance penalty in dissonance")
+    parser.add_argument("--w-smooth", type=float, default=0.2, dest="w_smooth", help="Weight for torsion smoothness penalty")
+    parser.add_argument("--w-snap", type=float, default=0.5, dest="w_snap", help="Weight for scale snapping penalty")
     args = parser.parse_args()
 
     generate(args.input_prefix, args.output_pdb, args.sequence, args.sequence_file)

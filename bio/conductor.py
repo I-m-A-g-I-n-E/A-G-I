@@ -451,7 +451,8 @@ class Conductor:
         return float(total)
 
     def refine_torsions(self, phi_psi_initial: list, modes: list[str], sequence: str,
-                        max_iters: int = 150, step_deg: float = 2.0, seed: int | None = None) -> tuple[list, np.ndarray]:
+                        max_iters: int = 150, step_deg: float = 2.0, seed: int | None = None,
+                        weights: dict | None = None, patience: int = 50) -> tuple[list, np.ndarray]:
         """
         Refines a set of torsion angles to minimize dissonance while staying on-key.
         Returns (refined_torsions_list, refined_backbone)
@@ -459,17 +460,23 @@ class Conductor:
         torsions = np.array(phi_psi_initial, dtype=np.float32)
         L = torsions.shape[0]
         rng = np.random.default_rng(seed)
-        weights = {'ca': 1.0, 'clash': 1.5, 'smooth': 0.2, 'snap': 0.5}
+        if weights is None:
+            weights = {'ca': 1.0, 'clash': 1.5, 'smooth': 0.2, 'snap': 0.5}
 
         # Evaluate initial
         bb_curr = self.build_backbone_from_torsions(torsions, sequence)
         best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)
+        iters_since_improvement = 0
 
-        for _ in range(max_iters):
+        for i in range(max_iters):
+            # Annealed step size (linear decay)
+            progress = i / max(1, max_iters)
+            current_step = float(step_deg) * (1.0 - progress)
+
             k = max(1, L // 5)
             idxs = rng.choice(L, size=k, replace=False)
             prop = torsions.copy()
-            prop[idxs] += rng.uniform(-step_deg, step_deg, size=(k, 2)).astype(np.float32)
+            prop[idxs] += rng.uniform(-current_step, current_step, size=(k, 2)).astype(np.float32)
             # snap to scale
             for idx in idxs:
                 phi, psi = prop[idx]
@@ -483,5 +490,59 @@ class Conductor:
                 torsions = prop
                 bb_curr = bb_prop
                 best_score = score_prop
+                iters_since_improvement = 0
+            else:
+                iters_since_improvement += 1
 
+            if iters_since_improvement >= patience:
+                print(f"   - Rehearsal converged after {i+1} iterations.")
+                break
+
+        # Final authoritative pass: targeted clash resolution
+        # If clashes remain, aggressively fix them by local torsion tweaks
+        rep_weights = dict(weights)
+        rep_weights['clash'] = max(rep_weights.get('clash', 1.5), 10.0)
+        # Evaluate current clashes using QC
+        rphi = np.array([t[0] for t in torsions])
+        rpsi = np.array([t[1] for t in torsions])
+        qc = self.quality_check(bb_curr, rphi, rpsi, modes)
+        clashes = qc['clashes']
+        attempts = 0
+        max_attempts = 1000
+        local_window = 2
+        while clashes and attempts < max_attempts:
+            # Work on the worst clash (smallest distance)
+            i, j, dmin = min(clashes, key=lambda x: x[2])
+            # Propose localized updates around i and j
+            idxs = list(range(max(0, i - local_window), min(L, i + local_window + 1))) + \
+                   list(range(max(0, j - local_window), min(L, j + local_window + 1)))
+            idxs = np.unique(idxs)
+            prop = torsions.copy()
+            # Use a modest step that can still move apart
+            step = 3.5
+            rng = np.random.default_rng(seed)
+            deltas = rng.uniform(-step, step, size=(len(idxs), 2)).astype(np.float32)
+            for k_idx, idx in enumerate(idxs):
+                prop[idx] += deltas[k_idx]
+                sphi, spsi = snap_to_scale(modes[idx], float(prop[idx, 0]), float(prop[idx, 1]))
+                prop[idx, 0] = sphi
+                prop[idx, 1] = spsi
+
+            bb_prop = self.build_backbone_from_torsions(prop, sequence)
+            score_curr = self.calculate_dissonance(bb_curr, torsions, modes, rep_weights)
+            score_prop = self.calculate_dissonance(bb_prop, prop, modes, rep_weights)
+            # Accept if improves dissonance OR specifically reduces number of clashes or increases min distance
+            qc_prop = self.quality_check(bb_prop, np.array([t[0] for t in prop]), np.array([t[1] for t in prop]), modes)
+            reduce_clash = qc_prop['summary']['num_clashes'] < qc['summary']['num_clashes']
+            increase_min = qc_prop['summary']['min_ca_ca'] > qc['summary']['min_ca_ca']
+            if score_prop < score_curr or reduce_clash or increase_min:
+                torsions = prop
+                bb_curr = bb_prop
+                qc = qc_prop
+                clashes = qc['clashes']
+            else:
+                attempts += 1
+                # small adaptive change of window/step if stuck
+                if attempts % 50 == 0 and local_window < 4:
+                    local_window += 1
         return torsions.tolist(), bb_curr
