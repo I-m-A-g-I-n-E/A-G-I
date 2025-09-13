@@ -25,9 +25,11 @@ To maintain intellectual rigor and avoid dismissal, the claims of this framework
 
 *   **Matripulation:** A portmanteau of "matrix" and "manipulation," referring to the art of performing reversible, on-grid operations that preserve the integrity of information on its native lattice.
 *   **48-Manifold:** The computational and conceptual space based on the number 48, chosen for its unique mathematical properties that enable perfect factorization and harmonious tiling.
-*   **keven/kodd:** The fundamental duality of the manifold. `keven` represents the symmetric, structural, resolving principle, while `kodd` represents the antisymmetric, dynamic, tensive principle.
-*   **kull Operator:** The system's integrity filter—`kill(keep 2*2(keven | kodd)kunits)`—that distills any state to its essential, harmonious `2 keven + 2 kodd` core through a process of computational apoptosis.
-*   **(key: kore):** The topographical map of meaning on the manifold. The `key` is the contextual grammar, and the `kore` is the gravitational center of stability and resolution (the tonic).
-*   **kunit/khord/kunity:** The compositional hierarchy of form. The `kunit` is the atomic note, the `khord` is the harmonious chord, and the `kunity` is the lawful phrase.
+*   **Left/Right (formerly keven/kodd):** The fundamental duality of a game state, conforming to Conway's `G = {L | R}`. `Left` options are typically structural, cold, or resolving (keven), while `Right` options are dynamic, hot, or tensive (kodd).
+*   **Canonicalization (formerly kull Operator):** The process of reducing a game state to its simplest equivalent form by removing dominated options and bypassing reversible ones. This integrity filter distills any position to its essential strategic kernel.
+*   **Game / Position (formerly kunit/khord):** The compositional hierarchy of form. An atomic game (`atom` or `kunit`) is a fundamental unit (e.g., `0`, `*`). A `position` (`khord`) is a harmonious assembly of atoms, forming a compound game.
+*   **Line of Play / Cooling (formerly kunity):** A lawful, temporal sequence of moves. A `cooling` line of play is a process that reduces a hot, complex position toward a cold, resolved numerical value, conforming to the `Left → Right → Left` cadence of optimal play.
+*   **0 (Zero) / Stop (formerly kore):** The ground state of a game, `0 = { | }`. It is the point of ultimate stability and resolution where no moves are available. The objective of a cooling line of play is to reach a `stop`.
+*   **Measurement Context (M) (formerly key):** The ruleset and conventions under which a game is evaluated. This includes the rules of play (like Life's B3/S23) and the value convention (normal play, misère play). The `key` becomes the context `M`.
 *   **Wholeness:** A state of non-decimated, reversible, on-grid integrity, where all parts have a clear provenance and sum to a coherent whole.
 *   **Vowel Seed:** The unique, cryptographically derived "private key of being" that determines an entity's base energetic signature and ensures its unique but lawful expression on the manifold.

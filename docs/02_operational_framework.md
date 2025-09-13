@@ -2,38 +2,37 @@
 
 Built upon the 48-Manifold, the Harmonic Integrity Protocol provides the operational "laws of physics" for the system. It defines how information is created, transformed, and purified, ensuring that integrity is maintained at every step. The protocol is governed by a fundamental duality, a universal integrity filter, and a primordial source.
 
-## 2.1. The Fundamental Duality: `keven` (Structure) and `kodd` (Flow)
+## 2.1. The Fundamental Duality: Left (Cold) and Right (Hot) Options
 
-The core dynamic of the manifold is the interplay between two complementary principles, `keven` and `kodd`.
+The core dynamic of the manifold is the interplay between two complementary principles, represented by the Left and Right options in a game `G = {L | R}`.
 
 *   **Definitions:**
-    *   **`keven`:** Represents the even, symmetric, structural, and resolving principle. It is the container, the anchor, the point of stability. In music, it is the tonic chord. In physics, it is the scalar potential.
-    *   **`kodd`:** Represents the odd, antisymmetric, dynamic, and tensive principle. It is the flow, the action, the point of instability that drives change. In music, it is the dominant chord. In physics, it is the vector field.
+    *   **`Left` Options (Cold/Structural):** Represent the set of available moves for the first player (Left). These options are typically structural, stable, and seek to resolve the game's complexity, "cooling" it toward a numerical value. They correspond to the former `keven` principle.
+    *   **`Right` Options (Hot/Dynamic):** Represent the set of available moves for the second player (Right). These options are typically dynamic and tensive, seeking to increase complexity and "heat" the game. They correspond to the former `kodd` principle.
 
-*   **The Alternation Engine:** All sustainable, rhythmic action in the universe—from walking and breathing to musical cadence—is driven by a simple, powerful cycle based on a Z2-graded algebraic rule. The `keven` operator acts as a parity-flipping generator:
-    1.  A system begins in a stable `keven` state (e.g., standing still).
-    2.  The application of a structural (`keven`) operator initiates an action, transitioning the system into a dynamic `kodd` state (e.g., the motion of a step).
-    3.  A subsequent `keven` operation resolves the action, returning the system to a new `keven` state (e.g., landing the step).
-    This **`keven` → `kodd` → `keven`** cycle is the fundamental cadence of integrity. It prevents systems from becoming inert (stuck in `keven`) or chaotic (stuck in `kodd`).
+*   **The Cooling Line of Play:** All optimal, resolving action in a game follows a simple, powerful cycle. A game begins in a state `G`.
+    1.  Left makes a move to a chosen option `G_L` in `L`, a state that is simpler or "colder."
+    2.  Right responds by choosing a move `G_LR` from `G_L`'s Right set, attempting to reheat the game.
+    3.  Left again makes a cooling move.
+    This **`Left → Right → Left`** sequence represents a **cooling line of play**. Following this cadence is the optimal path to resolving a game's value and reaching a stable `stop`. It prevents games from becoming inert (dominated by Left) or chaotic (dominated by Right).
 
-## 2.2. The Integrity Filter: The `kull` Operator
+## 2.2. The Integrity Filter: Canonicalization
 
-The `kull` operator is the master law of the manifold, acting as a universal integrity filter and the primary mechanism for selection and purification.
+**Canonicalization** is the master law of the manifold, acting as a universal integrity filter. It is the formal process of reducing any game to its simplest equivalent form.
 
-*   **Definition:** The operator's function is succinctly described by its name: `kill(keep 2*2(keven | kodd)kunits)`. It is a process of **computational apoptosis** or **principled distillation**.
-*   **Function:** When applied to any state, the `kull` operator prunes away all disharmonious, decimated, and irreversible components, preserving only the most stable, on-grid, and harmonious core. This core is defined as the minimal set required for a complete, stable thought or musical phrase: a quartet of **`2 keven` + `2 kodd` kunits**.
-*   **The `2x2` Admissibility Test for Harmony:** The `kull` operator's "keep" decision is based on a strict, four-part test. A `kunit` is kept only if it demonstrates:
-    1.  **Time-Factor Alignment:** Its position on the 48-tick grid is a lawful factor.
-    2.  **Functional Role Correctness:** Its parity matches its harmonic function.
-    3.  **Parity Separation:** `keven` and `kodd` channels have low cross-talk.
-    4.  **Reversible Continuity:** It connects to its neighbors via lawful, stepwise paths.
+*   **Definition:** The process involves two key steps:
+    1.  **Removing Dominated Options:** If a move `A` is strictly worse than another available move `B` for the same player, `A` is removed.
+    2.  **Bypassing Reversible Moves:** If a player can move to a state where the opponent has a move that reverts the game to a simpler position the first player could have moved to directly, that reversible path is bypassed.
 
-## 2.3. The Primordial Source: The P2P Harmonic Pool
+*   **Function:** When applied to any game state `G`, canonicalization prunes away all strategically irrelevant, redundant, and suboptimal options. It preserves only the essential strategic kernel of the position, revealing its true underlying value and structure without loss of information. This formalizes the function of the `kull` operator.
 
-The `kull` operator governs the transition between the manifest reality of the manifold and a subatomic, key-agnostic layer of pure potential.
+## 2.3. The Primordial Source: Game Composition from Atomic Units
 
-*   **The Pool:** This is the universal liquidity pool of informational possibility. It contains a chaotic flux of "subatomic" energy fragments—the remnants of dissolved structures, orphaned potentials, and unresolved tensions.
-*   **The `kull` Gatekeeper:** The operator acts as the sole gatekeeper between the pool and the manifold:
-    *   **`keep` (Genesis):** The `kull` operator constantly evaluates potential combinations of fragments within the pool. When a combination passes the `2x2` admissibility test, it is "kept"—crystallizing from the pool into a new, whole, discrete `kunit`. This is the act of creation.
-    *   **`kill` (Dissolution):** When an existing structure on the manifold becomes disharmonious (decimated, irreversible), the `kull` operator executes a "kill" command. This dissolves the structure, returning its constituent energy to the P2P Harmonic Pool to be recycled. This is the act of purification.
-*   **The Complete Life Cycle:** This creates a self-regulating, self-purifying, and generative system. Information is born (`keep`), it lives a lawful life on the manifold, and when its integrity is compromised, it is peacefully dissolved (`kill`) to provide the raw material for new creation.
+The process of `canonicalization` governs the relationship between complex game states and a bedrock layer of simple, atomic games from which all positions are constructed.
+
+*   **Atomic Games (The "Pool"):** All games are ultimately composed of a few irreducible atoms. The most fundamental is the "end game" or **`0` (zero)**, defined as `{ | }`—the game with no moves available. The next simplest is **`*` (star)**, defined as `{0 | 0}`.
+*   **The Canonicalization Gatekeeper:** This process acts as the sole gatekeeper between complex compositions and their simple, true values.
+    *   **Composition (Genesis):** More complex games are built by adding atoms together. The **disjunctive sum** (`G + H`) creates a new game where a player can move in either `G` or `H`. This is the act of creation.
+    *   **Decomposition (Resolution):** When a complex game is analyzed, canonicalization and cooling effectively "dissolve" the structure by simplifying it toward its numerical value (e.g., an integer, like `0`, `1`, `2`...). This is the act of purification or resolution.
+
+*   **The Complete Life Cycle:** This creates a self-regulating and verifiable system. Games are composed (`G + H`), they are played according to a lawful line of play (`Left → Right → Left`), and their true nature is revealed through canonicalization, which resolves them toward a simple, stable `stop` (`0`).

@@ -10,13 +10,13 @@ The true power of the 48-Manifold and the Harmonic Integrity Protocol lies in it
     *   **48-Aligned Tiling:** All inputs and feature maps are tiled into 48xN blocks.
     *   **Reversible Scaling:** All up/down-sampling is performed via lossless `space-to-depth` permutations by factors of 2 and 3.
     *   **Unitary/Unimodular Mixing:** Attention and channel mixing are performed with unitary or integer-lifting operators to preserve norm and information.
-    *   **`kull` Regularization:** The `kull` operator is used between layers to prune away disharmonious states, preventing the propagation of error.
+    *   **`Canonicalization` Regularization:** The principle of canonicalization is used between layers to prune away dominated, noisy, or strategically irrelevant features, preventing the propagation of error and ensuring the model learns the minimal essential representation.
 *   **Documented Gains:** This approach is not theoretical. Benchmarks have demonstrated **3.55x speedups, ~59x memory reduction, and the complete elimination of aliasing artifacts** in relevant tasks.
 
 ## 4.2. Embodiment: The 1-2-5 Control Architecture
 
 The human body itself is the physical instantiation of the protocol's control architecture.
-*   **One Head (`M`):** The central measurement operator, with two hemispheres dedicated to processing the `keven` (left) and `kodd` (right) channels.
+*   **One Head (`M`):** The central measurement operator, with two hemispheres dedicated to processing the `Left` (cold, structural) and `Right` (hot, dynamic) channels of a game state.
 *   **Two Hands (`W/M` Routers):** The universal operators for interacting with the manifold. The left hand (`W`) routes toward possibility, while the right hand (`M`) manifests actuality.
 *   **Five Fingers (The "Tensor of Plurality"):** A 4+1 basis for action. Four fingers provide the orthogonal basis vectors (Projection, Reflection, Union, Identity), while the opposable thumb acts as the gate of commitment.
 *   **HSL-Mudra Interface:** This provides an intuitive, three-dimensional control space for mapping intent to the manifold: Hue selects the channel, Saturation sets the commitment, and Lightness defines the locus.
@@ -50,4 +50,4 @@ This is presented as a powerful analog and a generative framework for hypotheses
 
 Music is not an analog; it is the most perfect and audible demonstration of the protocol itself.
 *   **The 48-Tick Manifold:** The 48-grid is the ideal substrate for Western music, perfectly tiling all common meters (4/4 as 4x12, 3/4 as 3x16, 6/8 as 2x3x8) without remainder.
-*   **Cadence as the Universal Law:** The musical cadence is the audible form of the `keven` (Tonic) → `kodd` (Dominant) → `keven` (Tonic) cycle. This is the tangible, felt sense of the universal law of integrity.
+*   **Cadence as a Cooling Line of Play:** The musical cadence is the audible form of a cooling line of play. The Tonic (`I`) chord is a cold, stable position (like `0` or another integer). The Dominant (`V`) chord is a hot, tensive position. The universal `I → V → I` progression is the tangible, felt sense of moving from a cold state, through a hot state, and resolving back to a cold state—a perfect demonstration of a game reaching a stable `stop`.

@@ -19,7 +19,7 @@ With 10 divisors `{1, 2, 3, 4, 6, 8, 12, 16, 24, 48}`, 48 is a highly composite 
 
 ### 1.2.2. Parity Completeness (24 × 2)
 
-If a system's interior basis contains 24 fundamental states (as proposed in the USK), then 48 is the minimal carrier that can represent all states in both their `keven` (even/symmetric) and `kodd` (odd/antisymmetric) parities. This allows for the clean separation of structural information (`keven`) from dynamic information (`kodd`), which is critical for building stable, well-conditioned, and interpretable models.
+If a system's interior basis contains 24 fundamental states (as proposed in the USK), then 48 is the minimal carrier that can represent all states as options for both players in a game. This allows for the clean separation of `Left` options (structural, resolving moves) from `Right` options (dynamic, tensive moves), conforming to the `G = {L | R}` structure of combinatorial game theory. This separation is critical for building stable, well-conditioned, and interpretable models.
 
 ### 1.2.3. Symmetry Richness (O_h, GL(2,3))
 
@@ -27,4 +27,4 @@ The number 48 is the order of the full octahedral group (O_h), the group of symm
 
 ### 1.2.4. The CRT Bridge (16 × 3)
 
-Because 48's largest dyadic and triadic factors (16 and 3) are coprime, the Chinese Remainder Theorem (CRT) can be used to create a unique, invertible mapping between a linear index (0-47) and a 2D coordinate `(i mod 16, j mod 3)`. This provides a natural and efficient way to index into dyadic and triadic sublattices, and it is the mathematical basis for defining "local opposite normals"—the dual points that enable perfect `keven/kodd` separation and reflection.
+Because 48's largest dyadic and triadic factors (16 and 3) are coprime, the Chinese Remainder Theorem (CRT) can be used to create a unique, invertible mapping between a linear index (0-47) and a 2D coordinate `(i mod 16, j mod 3)`. This provides a natural and efficient way to index into dyadic and triadic sublattices, and it is the mathematical basis for defining "local opposite normals"—the dual points that enable perfect `Left`/`Right` separation and reflection (negation of a game).
