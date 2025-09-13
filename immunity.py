@@ -7,7 +7,7 @@ A computational model inspired by immune system mechanisms for integrity checkin
 import torch
 import torch.nn.functional as F
 import hashlib
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 import numpy as np
@@ -96,6 +96,110 @@ def suppress_emits(kinds: Set[str]):
         yield
     finally:
         SUPPRESS_KINDS = prev
+
+# === Torch-only metrics for [48]-manifold vectors ===
+def _assert_48(x: torch.Tensor, name: str = "tensor") -> None:
+    assert x.dim() == 1 and x.shape[0] == 48, f"{name} must preserve 48-manifold dimensionality"
+
+def pearsonr_torch(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> float:
+    """Compute Pearson correlation. Both tensors must be [48]."""
+    _assert_48(pred, "pred"); _assert_48(target, "target")
+    x = pred.to(torch.float32)
+    y = target.to(torch.float32)
+    xm = x.mean(); ym = y.mean()
+    xv = x - xm; yv = y - ym
+    cov = torch.dot(xv, yv) / (x.numel() - 1)
+    stdx = xv.std(unbiased=True)
+    stdy = yv.std(unbiased=True)
+    r = cov / (stdx * stdy + eps)
+    return float(r.clamp(-1.0, 1.0).item())
+
+def _rankdata_torch(v: torch.Tensor) -> torch.Tensor:
+    # Stable ranking with average ranks for ties
+    n = v.numel()
+    sorted_vals, idx = torch.sort(v)
+    ranks = torch.zeros(n, dtype=torch.float32, device=v.device)
+    i = 0
+    while i < n:
+        j = i + 1
+        while j < n and sorted_vals[j] == sorted_vals[i]:
+            j += 1
+        # average rank for ties: 1-based ranks
+        avg_rank = (i + 1 + j) / 2.0
+        ranks[idx[i:j]] = avg_rank
+        i = j
+    return ranks
+
+def spearmanr_torch(pred: torch.Tensor, target: torch.Tensor) -> float:
+    """Compute Spearman correlation via rank transform. Both tensors must be [48]."""
+    _assert_48(pred, "pred"); _assert_48(target, "target")
+    rx = _rankdata_torch(pred.to(torch.float32))
+    ry = _rankdata_torch(target.to(torch.float32))
+    return pearsonr_torch(rx, ry)
+
+def auc_roc_torch(scores: torch.Tensor, labels: torch.Tensor) -> float:
+    """Compute AUC-ROC using Mann-Whitney U statistic. scores/labels must be [48]."""
+    _assert_48(scores, "scores"); _assert_48(labels, "labels")
+    s = scores.to(torch.float32)
+    y = labels.to(torch.float32)
+    # separate positive and negative scores
+    pos = s[y >= 0.5]
+    neg = s[y < 0.5]
+    n_pos = int(pos.numel()); n_neg = int(neg.numel())
+    if n_pos == 0 or n_neg == 0:
+        return float('nan')
+    # Mann-Whitney: probability that a random positive > random negative (+0.5 ties)
+    combined = torch.cat([pos, neg])
+    ranks = _rankdata_torch(combined)
+    r_pos = ranks[:n_pos].sum()
+    # U statistic for positives
+    U = r_pos - n_pos * (n_pos + 1) / 2.0
+    auc = U / (n_pos * n_neg)
+    return float(auc.item())
+
+def _auc_roc_any(scores: torch.Tensor, labels: torch.Tensor) -> float:
+    # General-length AUC for flatten mode (keeps 48-aligned concatenation; no resampling)
+    s = scores.to(torch.float32)
+    y = labels.to(torch.float32)
+    pos = s[y >= 0.5]
+    neg = s[y < 0.5]
+    n_pos = int(pos.numel()); n_neg = int(neg.numel())
+    if n_pos == 0 or n_neg == 0:
+        return float('nan')
+    combined = torch.cat([pos, neg])
+    ranks = _rankdata_torch(combined)
+    r_pos = ranks[:n_pos].sum()
+    U = r_pos - n_pos * (n_pos + 1) / 2.0
+    return float((U / (n_pos * n_neg)).item())
+
+def _pearson_any(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> float:
+    x = x.to(torch.float32); y = y.to(torch.float32)
+    xm = x.mean(); ym = y.mean()
+    xv = x - xm; yv = y - ym
+    cov = torch.dot(xv, yv) / (x.numel() - 1 if x.numel() > 1 else 1)
+    stdx = xv.std(unbiased=True) if x.numel() > 1 else torch.tensor(0.0, device=x.device)
+    stdy = yv.std(unbiased=True) if y.numel() > 1 else torch.tensor(0.0, device=y.device)
+    r = cov / (stdx * stdy + eps)
+    return float(r.clamp(-1.0, 1.0).item())
+
+def _spearman_any(x: torch.Tensor, y: torch.Tensor) -> float:
+    rx = _rankdata_torch(x.to(torch.float32))
+    ry = _rankdata_torch(y.to(torch.float32))
+    return _pearson_any(rx, ry)
+
+def _classification_metrics(scores: torch.Tensor, labels: torch.Tensor, threshold: float = 0.5) -> Dict[str, float]:
+    s = scores.to(torch.float32)
+    y = labels.to(torch.float32)
+    yhat = (s >= threshold).float()
+    tp = float(((yhat == 1) & (y == 1)).sum().item())
+    tn = float(((yhat == 0) & (y == 0)).sum().item())
+    fp = float(((yhat == 1) & (y == 0)).sum().item())
+    fn = float(((yhat == 0) & (y == 1)).sum().item())
+    acc = (tp + tn) / max(1.0, tp + tn + fp + fn)
+    prec = tp / max(1.0, tp + fp)
+    rec = tp / max(1.0, tp + fn)
+    f1 = 2 * prec * rec / max(1e-8, (prec + rec)) if (prec + rec) > 0 else 0.0
+    return {"accuracy": acc, "precision": prec, "recall": rec, "f1": f1}
 
 class CellType(Enum):
     """Representative immune cell types with mapped roles (analog)"""
@@ -592,6 +696,10 @@ def run_pdb_batch(
     bmap: str,
     assume_folded: bool,
     educate_first_n: int,
+    metrics: bool = True,
+    plddt_thr: float = 70.0,
+    bfactor_threshold: float = 0.7,
+    metrics_mode: str = "per_window",
 ) -> Dict[str, object]:
     """
     Process a list of PDB entries, one per line. Each line can be one of:
@@ -639,6 +747,10 @@ def run_pdb_batch(
                     educate_first_n=educate_first_n,
                     bmap=bmap,
                     assume_folded=assume_folded,
+                    metrics=metrics,
+                    plddt_thr=plddt_thr,
+                    bfactor_threshold=bfactor_threshold,
+                    metrics_mode=metrics_mode,
                 )
             else:
                 res = demonstrate_folding_qa_pdb(
@@ -650,6 +762,10 @@ def run_pdb_batch(
                     educate_first_n=educate_first_n,
                     bmap=bmap,
                     assume_folded=assume_folded,
+                    metrics=metrics,
+                    plddt_thr=plddt_thr,
+                    bfactor_threshold=bfactor_threshold,
+                    metrics_mode=metrics_mode,
                 )
             res = dict(res)
             res.update({"entry": token, "chain": chain or "", "source_is_path": bool(is_path)})
@@ -677,6 +793,11 @@ def demonstrate_folding_qa_pdb(
     educate_first_n: int = 0,
     bmap: str = "auto",
     assume_folded: bool = False,
+    *,
+    metrics: bool = True,
+    plddt_thr: float = 70.0,
+    bfactor_threshold: float = 0.7,
+    metrics_mode: str = "per_window",
 ) -> Dict[str, int]:
     """
     Real-structure folding QA using RCSB PDB and B-factors as a proxy for local order.
@@ -722,6 +843,9 @@ def demonstrate_folding_qa_pdb(
         "educated": 0,
     }
 
+    # Invariants: window must be exactly 48; stride must divide 48
+    assert window_size == 48, "Windows must remain exactly 48 residues"
+    assert 48 % stride == 0, "Stride must be a lawful divisor of 48"
     # Prepare windows; if sequence is shorter than window_size, pad a single window
     win_list = list(windowize(b_vals, size=window_size, stride=stride))
     if not win_list and len(b_vals) < window_size and len(b_vals) > 0:
@@ -741,12 +865,35 @@ def demonstrate_folding_qa_pdb(
     dendritic = immune.create_immune_cell(CellType.DENDRITIC)
     b_cell = immune.create_immune_cell(CellType.B_CELL)
 
+    # Metrics aggregation containers
+    pearsons: List[float] = []
+    spearmans: List[float] = []
+    aucs: List[float] = []
+    accs: List[float] = []
+    precs: List[float] = []
+    recs: List[float] = []
+    f1s: List[float] = []
+    # flatten accumulators (keep 48-aligned concatenation; no resampling)
+    flat_scores: List[torch.Tensor] = []
+    flat_targets: List[torch.Tensor] = []
+    flat_labels: List[torch.Tensor] = []
+
+    def _compute_target_vector(raw_window: Sequence[float], use_mode: str) -> torch.Tensor:
+        t = torch.tensor(raw_window, dtype=torch.float32, device=device)
+        if use_mode == "plddt" or (use_mode == "auto" and float(t.max().item()) <= 100.0):
+            return (t / 100.0).clamp(0.0, 1.0)
+        else:
+            # order score from B: invert min-max
+            mn = t.min(); mx = t.max(); return (1.0 - (t - mn) / (mx - mn + 1e-8)).clamp(0.0, 1.0)
+
     with click.progressbar(win_list, label="Evaluating PDB windows") as bar:
         for start_idx, window in bar:
             if len(window) != window_size:
                 continue
             # Convert B-like values to [0,1] peptides per selected mode
             peptides = bfactors_to_peptides(window, mode=bmap).to(device)
+            # Basic invariant
+            assert peptides.shape == (48,), "Peptide vectors must remain [48]"
             # Consider properly folded if requested; otherwise mean-based score
             antigen = Antigen(
                 epitope_id=f"{pdb_id}:{chain or ''}:{start_idx}",
@@ -772,6 +919,36 @@ def demonstrate_folding_qa_pdb(
                     if mac is not None:
                         results["complement_full"] += 1
 
+            # Metrics computation per 48-window
+            if metrics:
+                target_vec = _compute_target_vector(window, bmap)
+                assert target_vec.shape == (48,), "Target vectors must remain [48]"
+                # Correlations
+                try:
+                    pearsons.append(pearsonr_torch(peptides, target_vec))
+                    spearmans.append(spearmanr_torch(peptides, target_vec))
+                except Exception:
+                    pass
+                # Labels
+                raw_t = torch.tensor(window, dtype=torch.float32, device=device)
+                if (bmap == "plddt") or (bmap == "auto" and float(raw_t.max().item()) <= 100.0):
+                    labels = (raw_t >= float(plddt_thr)).float()
+                else:
+                    labels = (target_vec >= float(bfactor_threshold)).float()
+                assert labels.shape == (48,), "Labels must remain [48]"
+                # AUC and threshold metrics
+                try:
+                    aucs.append(auc_roc_torch(peptides, labels))
+                except Exception:
+                    pass
+                cls = _classification_metrics(peptides, labels, threshold=0.5)
+                accs.append(cls["accuracy"]) ; precs.append(cls["precision"]) ; recs.append(cls["recall"]) ; f1s.append(cls["f1"])
+
+                if metrics_mode == "flatten":
+                    flat_scores.append(peptides.detach())
+                    flat_targets.append(target_vec.detach())
+                    flat_labels.append(labels.detach())
+
     emit("\nPDB QA SUMMARY", kind="notice")
     emit(f"  Source: {src_label}", kind="success")
     emit(f"  Residues: {results['residues']} | window={window_size} stride={stride}", kind="success")
@@ -781,6 +958,39 @@ def demonstrate_folding_qa_pdb(
     emit(f"  Accepted (self-like): {results['accepted']}", kind="success")
     emit(f"  Foreign (non-self): {results['foreign']}", kind="success")
     emit(f"  Complement full successes: {results['complement_full']}", kind="success")
+
+    # Aggregate and attach metrics
+    if metrics and results["windows"] > 0:
+        def _mean(x: List[float]) -> float:
+            return float(sum(x) / max(1, len(x))) if x else float('nan')
+        metrics_block: Dict[str, object] = {
+            "n_windows": int(results["windows"]),
+            "window_size": 48,
+            "stride": stride,
+            "mode": metrics_mode,
+        }
+        if metrics_mode == "per_window":
+            metrics_block.update({
+                "pearson_mean": _mean(pearsons),
+                "spearman_mean": _mean(spearmans),
+                "auc_mean": _mean(aucs),
+                "acc_mean": _mean(accs),
+                "precision_mean": _mean(precs),
+                "recall_mean": _mean(recs),
+                "f1_mean": _mean(f1s),
+            })
+        else:
+            # flatten mode: compute once over concatenated vectors (still 48-aligned, no resampling)
+            if flat_scores:
+                fs = torch.cat(flat_scores)
+                ft = torch.cat(flat_targets)
+                fl = torch.cat(flat_labels)
+                metrics_block.update({
+                    "pearson": _pearson_any(fs, ft),
+                    "spearman": _spearman_any(fs, ft),
+                    "auc": _auc_roc_any(fs, fl),
+                })
+        results.setdefault("metrics", metrics_block)  # type: ignore[assignment]
 
     return results
 
@@ -929,6 +1139,11 @@ def timed_call(label: str, func, *args, **kwargs):
 @click.option("--educate-first-n", type=int, default=0, help="Educate thymus on the first N windows before evaluation.")
 @click.option("--bmap", type=click.Choice(["b_factor", "plddt", "auto"]), default="auto", help="Mapping of B-like values to peptides.")
 @click.option("--assume-folded/--no-assume-folded", default=False, help="Treat all PDB windows as properly folded for acceptance gate.")
+# Metrics options
+@click.option("--metrics/--no-metrics", default=True, help="Compute correlation/classification metrics on 48-windows.")
+@click.option("--plddt-thr", type=float, default=70.0, help="Classification threshold for pLDDT.")
+@click.option("--bfactor-threshold", type=float, default=0.7, help="Classification threshold for B-order score.")
+@click.option("--metrics-mode", type=click.Choice(["per_window", "flatten"]), default="per_window", help="Per-window means or flattened one-shot metrics.")
 # Folding acceptance threshold override
 @click.option("--folding-threshold", type=float, default=0.95, help="Acceptance threshold for folding_score (0..1).")
 @click.option("--pdb-list", type=click.Path(exists=True, dir_okay=False, readable=True), default=None, help="Path to a text file of PDB IDs or PDB paths, one per line; optional ',CHAIN'.")
@@ -958,6 +1173,10 @@ def cli(
     educate_first_n: int,
     bmap: str,
     assume_folded: bool,
+    metrics: bool,
+    plddt_thr: float,
+    bfactor_threshold: float,
+    metrics_mode: str,
     folding_threshold: float,
     pdb_list: Optional[str],
     fold_low: float,
@@ -1032,6 +1251,10 @@ def cli(
             educate_first_n=educate_first_n,
             bmap=bmap,
             assume_folded=assume_folded,
+            metrics=metrics,
+            plddt_thr=plddt_thr,
+            bfactor_threshold=bfactor_threshold,
+            metrics_mode=metrics_mode,
         )
         if benchmark:
             click.secho(f"PDB demo time: {dt*1000:.2f} ms", fg="green")
@@ -1046,6 +1269,10 @@ def cli(
             bmap=bmap,
             assume_folded=assume_folded,
             educate_first_n=educate_first_n,
+            metrics=metrics,
+            plddt_thr=plddt_thr,
+            bfactor_threshold=bfactor_threshold,
+            metrics_mode=metrics_mode,
         )
         if benchmark:
             click.secho(f"PDB batch time: {dt*1000:.2f} ms", fg="green")
@@ -1112,6 +1339,7 @@ def cli(
         if batch_results and isinstance(batch_results.get("entries", None), list):
             rows = []
             for ent in batch_results["entries"]:  # type: ignore[index]
+                _m = (ent.get("metrics", {}) or {})
                 rows.append({
                     "device": str(device),
                     "pdb_entry": ent.get("entry", ""),
@@ -1122,6 +1350,14 @@ def cli(
                     "foreign": ent.get("foreign", 0),
                     "complement_full": ent.get("complement_full", 0),
                     "educated": ent.get("educated", 0),
+                    # Metrics (if present)
+                    "pearson_mean": (_m.get("pearson_mean", float('nan'))),
+                    "spearman_mean": (_m.get("spearman_mean", float('nan'))),
+                    "auc_mean": (_m.get("auc_mean", float('nan'))),
+                    "pearson": (_m.get("pearson", float('nan'))),
+                    "spearman": (_m.get("spearman", float('nan'))),
+                    "auc": (_m.get("auc", float('nan'))),
+                    "metrics_mode": (_m.get("mode", "")),
                     "window_size": window_size,
                     "stride": stride,
                     "bmap": bmap,

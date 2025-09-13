@@ -1,0 +1,74 @@
+{
+  "device": "mps",
+  "demo_ms": [],
+  "trials": 0,
+  "trial_times_s": [],
+  "repeat": 1,
+  "seed": 42,
+  "randomization": {
+    "fold_low": 0.0,
+    "fold_high": 0.9,
+    "offset_min": 1000,
+    "offset_max": 100000,
+    "factor_k_max": 3,
+    "shuffle_sites": true
+  },
+  "last_results": {},
+  "folding_demo": false,
+  "folding_results": {},
+  "pdb_id": "",
+  "pdb_path": "",
+  "chain": "",
+  "pdb_results": {},
+  "pdb_list": "af_list.txt",
+  "pdb_batch": {
+    "entries": [
+      {
+        "windows": 6,
+        "accepted": 1,
+        "foreign": 5,
+        "complement_full": 6,
+        "residues": 142,
+        "window_size": 48,
+        "stride": 16,
+        "educated": 1,
+        "entry": "af_pdbs/AF-P69905-F1-model_v4.pdb",
+        "chain": "",
+        "source_is_path": true
+      },
+      {
+        "windows": 7,
+        "accepted": 1,
+        "foreign": 6,
+        "complement_full": 7,
+        "residues": 147,
+        "window_size": 48,
+        "stride": 16,
+        "educated": 1,
+        "entry": "af_pdbs/AF-P68871-F1-model_v4.pdb",
+        "chain": "",
+        "source_is_path": true
+      },
+      {
+        "windows": 46,
+        "accepted": 0,
+        "foreign": 46,
+        "complement_full": 46,
+        "residues": 770,
+        "window_size": 48,
+        "stride": 16,
+        "educated": 1,
+        "entry": "af_pdbs/AF-P05067-F1-model_v4.pdb",
+        "chain": "",
+        "source_is_path": true
+      }
+    ],
+    "totals": {
+      "windows": 59,
+      "accepted": 2,
+      "foreign": 57,
+      "complement_full": 59,
+      "structures": 3
+    }
+  }
+}

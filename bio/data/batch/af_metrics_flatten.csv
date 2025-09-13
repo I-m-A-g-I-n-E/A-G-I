@@ -1,0 +1,4 @@
+device,pdb_entry,chain,source_is_path,windows,accepted,foreign,complement_full,educated,pearson_mean,spearman_mean,auc_mean,pearson,spearman,auc,metrics_mode,window_size,stride,bmap,assume_folded,folding_threshold
+mps,af_pdbs/AF-P69905-F1-model_v4.pdb,,True,6,0,6,6,0,nan,nan,nan,0.9999728202819824,0.9999998807907104,1.0,flatten,48,16,plddt,False,0.95
+mps,af_pdbs/AF-P68871-F1-model_v4.pdb,,True,7,0,7,7,0,nan,nan,nan,0.9999873042106628,0.9999998807907104,1.0,flatten,48,16,plddt,False,0.95
+mps,af_pdbs/AF-P05067-F1-model_v4.pdb,,True,46,0,46,46,0,nan,nan,nan,1.0,1.0,1.0,flatten,48,16,plddt,False,0.95

@@ -1,0 +1,4 @@
+device,pdb_entry,chain,source_is_path,windows,accepted,foreign,complement_full,educated,pearson_mean,spearman_mean,auc_mean,metrics_mode,window_size,stride,bmap,assume_folded,folding_threshold
+mps,1CRN,A,False,1,0,1,1,0,0.9999998807907104,1.0,1.0,per_window,48,16,b_factor,False,0.95
+mps,1UBQ,A,False,2,0,2,2,0,0.9999998509883881,1.0,1.0,per_window,48,16,b_factor,False,0.95
+mps,1AKI,A,False,6,0,6,6,0,0.9999999304612478,1.0,1.0,per_window,48,16,b_factor,False,0.95
