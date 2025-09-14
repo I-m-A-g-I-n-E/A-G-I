@@ -7,11 +7,13 @@ in PDB format.
 """
 import argparse
 import os
+import csv
 import numpy as np
 import torch
 
 from bio.utils import load_ensemble, ensure_dir_for, save_json
 from bio import pipeline
+from bio.datasources import read_pdb, parse_pdb_ca_coords
 
 
 def _load_sequence(seq_arg: str | None, seq_file: str | None, fallback_len: int) -> str:
@@ -66,6 +68,21 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
 
     # 4. Run QC and save a report
     report = pipeline.quality_report(conductor, backbone, phi, psi, modes)
+
+    # 4b. Optional: evaluate against a reference PDB (CA-only metrics)
+    if hasattr(args, 'ref_pdb') and args.ref_pdb:
+        try:
+            ref_txt = read_pdb(args.ref_pdb)
+            ref_ca = parse_pdb_ca_coords(ref_txt, chain=getattr(args, 'ref_chain', None))
+            metrics = conductor.evaluate_against_reference(backbone, ref_ca)
+            report["reference_metrics"] = metrics
+            print("   - Reference metrics:", metrics)
+            # Save a dedicated metrics JSON for initial structure
+            init_metrics_path = base_noext + "_initial_metrics.json"
+            save_json(metrics, init_metrics_path)
+            print(f"   - Wrote initial metrics to {init_metrics_path}")
+        except Exception as e:
+            print(f"   - Warning: reference evaluation failed: {e}")
     qc_path = base_noext + "_qc.json"
     save_json(report, qc_path)
     print(f"   - Wrote QC report to {qc_path}")
@@ -95,7 +112,21 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         rphi = np.array([t[0] for t in refined_torsions])
         rpsi = np.array([t[1] for t in refined_torsions])
         qc_refined = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        if hasattr(args, 'ref_pdb') and args.ref_pdb:
+            try:
+                ref_txt = read_pdb(args.ref_pdb)
+                ref_ca = parse_pdb_ca_coords(ref_txt, chain=getattr(args, 'ref_chain', None))
+                metrics = conductor.evaluate_against_reference(refined_backbone, ref_ca)
+                qc_refined["reference_metrics"] = metrics
+                print("   - Refined reference metrics:", metrics)
+                # Save a dedicated metrics JSON for refined structure
+                ref_metrics_path = base_noext + "_refined_metrics.json"
+                save_json(metrics, ref_metrics_path)
+                print(f"   - Wrote refined metrics to {ref_metrics_path}")
+            except Exception as e:
+                print(f"   - Warning: refined reference evaluation failed: {e}")
         qc_refined_path = base_noext + "_refined_qc.json"
+        print(f"   - Saving refined QC to: {qc_refined_path}")
         save_json(qc_refined, qc_refined_path)
         # Dissonance for refined
         torsions_ref = np.stack([rphi, rpsi], axis=1)
@@ -122,6 +153,62 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         if args.refine:
             wav_refined = pipeline.sonify_3ch(comp, kore_vector, certainty, diss_ref_vec, bpm=args.bpm, stride_ticks=args.stride_ticks)
             pipeline.save_wav(wav_refined, args.audio_wav.replace('.wav', '_refined.wav'))
+
+    # 7. Optional CSV metrics summary for easy aggregation
+    if getattr(args, 'metrics_csv', None):
+        csv_path = os.path.expanduser(args.metrics_csv)
+        ensure_dir_for(csv_path)
+        header = [
+            'output_base', 'stage', 'num_clashes', 'min_ca_ca', 'max_ca_ca',
+            'rmsd_ca', 'lddt_ca', 'tm_score_ca'
+        ]
+        rows = []
+        # load metrics from earlier saves if present
+        init_metrics_json = base_noext + "_initial_metrics.json"
+        refined_metrics_json = base_noext + "_refined_metrics.json"
+        import json
+        # Initial
+        init_qc = report.get('summary', {})
+        init_ref = None
+        if os.path.exists(init_metrics_json):
+            try:
+                with open(init_metrics_json, 'r') as fh:
+                    init_ref = json.load(fh)
+            except Exception:
+                init_ref = None
+        rows.append([
+            base_noext, 'initial',
+            init_qc.get('num_clashes', ''), init_qc.get('min_ca_ca', ''), init_qc.get('max_ca_ca', ''),
+            '' if init_ref is None else init_ref.get('rmsd_ca', ''),
+            '' if init_ref is None else init_ref.get('lddt_ca', ''),
+            '' if init_ref is None else init_ref.get('tm_score_ca', ''),
+        ])
+        # Refined
+        if args.refine:
+            try:
+                with open(refined_metrics_json, 'r') as fh:
+                    ref_ref = json.load(fh)
+            except Exception:
+                ref_ref = None
+            try:
+                ref_summary = qc_refined.get('summary', {})
+            except Exception:
+                ref_summary = {}
+            rows.append([
+                base_noext, 'refined',
+                ref_summary.get('num_clashes', ''), ref_summary.get('min_ca_ca', ''), ref_summary.get('max_ca_ca', ''),
+                '' if ref_ref is None else ref_ref.get('rmsd_ca', ''),
+                '' if ref_ref is None else ref_ref.get('lddt_ca', ''),
+                '' if ref_ref is None else ref_ref.get('tm_score_ca', ''),
+            ])
+        # write/append CSV
+        write_header = not os.path.exists(csv_path)
+        with open(csv_path, 'a', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            if write_header:
+                writer.writerow(header)
+            writer.writerows(rows)
+        print(f"   - Appended metrics to {csv_path}")
 
     print("\n" + "=" * 50)
     print("  Structure Generation Complete")
@@ -166,6 +253,11 @@ if __name__ == "__main__":
     parser.add_argument("--wc-kore", type=float, default=1.5, dest="wc_kore", help="Weight for kore projection in center channel.")
     parser.add_argument("--wc-cert", type=float, default=1.0, dest="wc_cert", help="Weight for harmonic certainty in center channel.")
     parser.add_argument("--wc-diss", type=float, default=2.5, dest="wc_diss", help="Weight for dissonance in center channel.")
+    # Reference structure evaluation
+    parser.add_argument("--ref-pdb", type=str, default=None, help="Path to a reference PDB to compute RMSD/lDDT/TM-score (CA only)")
+    parser.add_argument("--ref-chain", type=str, default=None, help="Optional chain ID for the reference PDB")
+    # Metrics aggregation
+    parser.add_argument("--metrics-csv", type=str, default=None, help="Optional path to append a CSV summary of initial/refined metrics")
     args = parser.parse_args()
 
     generate(args.input_prefix, args.output_pdb, args.sequence, args.sequence_file)
