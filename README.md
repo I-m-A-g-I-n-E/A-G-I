@@ -16,6 +16,52 @@ Notes:
 - macOS with Apple Silicon is supported; several modules use PyTorch MPS if available.
 - No external bioinformatics libraries are required. PDB parsing and feature extraction are implemented locally.
 
+## Device selection (CPU, CUDA, MPS)
+
+Centralized helpers in `bio/devices.py` choose the appropriate torch device and hide platform quirks.
+
+Quick start:
+
+```python
+from bio.devices import get_device, to_device, module_to_device, svd_safe, is_float64_supported
+import torch
+
+device = get_device()  # priority: CUDA > MPS > CPU (unless overridden)
+
+# Place tensors and modules
+x = torch.randn(2, 3, 48, 48)
+x = to_device(x, device)
+
+# Move a module
+# model = module_to_device(model, device)
+
+# Safe SVD across backends (MPS uses CPU internally to avoid slow implicit fallback)
+U, S, Vh = svd_safe(x.flatten(2)[0])
+
+# Float64 guard (MPS does not support float64)
+if is_float64_supported(device):
+    x64 = x.double()
+```
+
+Environment overrides:
+
+```bash
+# Hard force CPU
+AGI_FORCE_CPU=1 python3 scripts/generate_structure.py ...
+
+# Preferred device if available
+AGI_DEVICE=cuda python3 scripts/generate_structure.py ...
+AGI_DEVICE=mps  python3 scripts/generate_structure.py ...
+AGI_DEVICE=cpu  python3 scripts/generate_structure.py ...
+```
+
+Recommendations:
+
+- Use `get_device()` once near program start and pass the `device` where practical.
+- When calling `torch.linalg.svd` on MPS, prefer `svd_safe(...)` to avoid slow implicit fallbacks and device mismatches.
+- Avoid float64 on MPS; gate with `is_float64_supported(device)`.
+- In tests on macOS, consider forcing CPU for determinism and speed: `AGI_FORCE_CPU=1 pytest -q`.
+
 ## Project layout (selected)
 
 - `manifold.py` — Core 48-manifold primitives: `Fractal48Layer`, `KEven/KOdd/kull`, `SixAxisState`.
