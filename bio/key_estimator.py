@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from bio.devices import svd_safe
 from typing import List, Tuple
 
 def estimate_key_and_modes(composition_vectors: torch.Tensor, sequence: str) -> Tuple[torch.Tensor, List[str]]:
@@ -19,11 +20,11 @@ def estimate_key_and_modes(composition_vectors: torch.Tensor, sequence: str) -> 
     if composition_vectors.ndim == 1:
         X = composition_vectors.unsqueeze(0)
     else:
-        X = composition_vectors
+        X = composition_vectors     
 
     # 1. Determine Global Kore (The Tonic Drone): top right singular vector
-    # torch.linalg.svd returns U, S, Vh with Vh shape (..., n, n)
-    U, S, Vh = torch.linalg.svd(X, full_matrices=False)
+    # Use svd_safe to accommodate MPS/CPU/CUDA differences
+    U, S, Vh = svd_safe(X, full_matrices=False)
     global_kore = Vh[0, :]
 
     # 2. Determine Local Modes (Helix, Sheet, Loop) via simple propensities
