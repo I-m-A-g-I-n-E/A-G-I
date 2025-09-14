@@ -92,3 +92,32 @@ af_pdbs/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# ---- Environment files ----
+.env
+.env.*
+.env.local
+.envrc
+
+# ---- Media (audio) outputs ----
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.aiff
+*.aif
+*.m4a
+*.mid
+*.midi
+
+# ---- Large binary archives ----
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.bz2
+*.7z
+*.rar
+*.gz
+get_seq.py
+run_seeds.sh
