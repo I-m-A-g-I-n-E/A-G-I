@@ -539,3 +539,144 @@ class Conductor:
                 if attempts % 50 == 0 and local_window < 4:
                     local_window += 1
         return torsions.tolist(), bb_curr
+
+    # -------------------------
+    # Reference Metrics (CA-only alignment)
+    # -------------------------
+    @staticmethod
+    def _extract_ca(backbone: np.ndarray) -> np.ndarray:
+        """Return CA coordinates (L,3) from a backbone shaped (L,3,3)."""
+        assert backbone.ndim == 3 and backbone.shape[1] == 3 and backbone.shape[2] == 3, "backbone must be (L,3,3)"
+        return backbone[:, 1, :]  # CA is index 1
+
+    @staticmethod
+    def _kabsch(P: np.ndarray, Q: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Compute optimal rotation R and translation t s.t. R@P + t ~= Q.
+        P, Q: (L,3). Returns (R (3,3), t (3,))
+        """
+        assert P.shape == Q.shape and P.ndim == 2 and P.shape[1] == 3
+        Pc = P - P.mean(axis=0)
+        Qc = Q - Q.mean(axis=0)
+        H = Pc.T @ Qc
+        U, S, Vt = np.linalg.svd(H)
+        R = Vt.T @ U.T
+        if np.linalg.det(R) < 0:
+            Vt[-1, :] *= -1
+            R = Vt.T @ U.T
+        t = Q.mean(axis=0) - R @ P.mean(axis=0)
+        return R, t
+
+    def align_ca(self, pred_backbone: np.ndarray, ref_ca: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Align predicted CA to reference CA via Kabsch.
+        Returns (pred_aligned (L,3), ref_used (L,3), R@P+t).
+        """
+        P = self._extract_ca(pred_backbone)
+        L = min(P.shape[0], ref_ca.shape[0])
+        if L == 0:
+            raise ValueError("Empty coordinates for alignment")
+        P = P[:L]
+        Q = ref_ca[:L]
+        R, t = self._kabsch(P, Q)
+        P_aligned = (R @ P.T).T + t
+        return P_aligned, Q, P_aligned
+
+    def rmsd_ca(self, pred_backbone: np.ndarray, ref_ca: np.ndarray) -> float:
+        """Backbone CA RMSD after Kabsch alignment."""
+        P = self._extract_ca(pred_backbone)
+        L = min(P.shape[0], ref_ca.shape[0])
+        if L == 0:
+            return float("nan")
+        P = P[:L]
+        Q = ref_ca[:L]
+        R, t = self._kabsch(P, Q)
+        P_aligned = (R @ P.T).T + t
+        diff2 = np.sum((P_aligned - Q) ** 2, axis=1)
+        return float(np.sqrt(np.mean(diff2)))
+
+    def lddt_ca(self, pred_backbone: np.ndarray, ref_ca: np.ndarray, cutoffs: list[float] | None = None) -> float:
+        """Approximate lDDT using CA-CA distances only.
+        Computes fraction of neighbor pairs whose distance error falls within thresholds.
+        cutoffs in Angstroms; default [0.5,1,2,4] per standard lDDT bins.
+        """
+        if cutoffs is None:
+            cutoffs = [0.5, 1.0, 2.0, 4.0]
+        P = self._extract_ca(pred_backbone)
+        L = min(P.shape[0], ref_ca.shape[0])
+        if L < 3:
+            return float("nan")
+        P = P[:L]
+        Q = ref_ca[:L]
+        # Use aligned P to avoid rigid-body differences
+        R, t = self._kabsch(P, Q)
+        P = (R @ P.T).T + t
+        # Pairwise distances within a neighborhood (|i-j| between 1 and 15)
+        max_seq_sep = 15
+        counts = 0
+        score = 0.0
+        for i in range(L):
+            for j in range(i + 1, min(L, i + max_seq_sep + 1)):
+                dP = np.linalg.norm(P[i] - P[j])
+                dQ = np.linalg.norm(Q[i] - Q[j])
+                err = abs(dP - dQ)
+                # lDDT assigns partial credit across thresholds
+                hits = sum(1 for c in cutoffs if err < c) / len(cutoffs)
+                score += hits
+                counts += 1
+        if counts == 0:
+            return float("nan")
+        return float(score / counts)
+
+    def tm_score_ca(self, pred_backbone: np.ndarray, ref_ca: np.ndarray) -> float:
+        """Compute TM-score using CA atoms after Kabsch alignment.
+        Uses standard d0 = 1.24*(L-15)^(1/3) - 1.8, clipped to >= 0.5.
+        """
+        P = self._extract_ca(pred_backbone)
+        L = min(P.shape[0], ref_ca.shape[0])
+        if L == 0:
+            return float("nan")
+        P = P[:L]
+        Q = ref_ca[:L]
+        R, t = self._kabsch(P, Q)
+        P_aligned = (R @ P.T).T + t
+        d2 = np.sum((P_aligned - Q) ** 2, axis=1)
+        d0 = 1.24 * np.cbrt(max(L - 15, 1)) - 1.8
+        d0 = max(d0, 0.5)
+        tm = np.mean(1.0 / (1.0 + (np.sqrt(d2) / d0) ** 2))
+        return float(tm)
+
+    def evaluate_against_reference(self,
+                                   pred_backbone: np.ndarray,
+                                   ref_ca: np.ndarray,
+                                   pred_phi: np.ndarray | None = None,
+                                   pred_psi: np.ndarray | None = None,
+                                   ref_phi: np.ndarray | None = None,
+                                   ref_psi: np.ndarray | None = None) -> dict:
+        """Compute standard metrics vs a reference CA trace and optional torsions.
+        Returns a dict with keys: rmsd_ca, lddt_ca, tm_score_ca, torsion_mae (if available).
+        """
+        metrics: dict = {}
+        try:
+            metrics["rmsd_ca"] = self.rmsd_ca(pred_backbone, ref_ca)
+        except Exception:
+            metrics["rmsd_ca"] = float("nan")
+        try:
+            metrics["lddt_ca"] = self.lddt_ca(pred_backbone, ref_ca)
+        except Exception:
+            metrics["lddt_ca"] = float("nan")
+        try:
+            metrics["tm_score_ca"] = self.tm_score_ca(pred_backbone, ref_ca)
+        except Exception:
+            metrics["tm_score_ca"] = float("nan")
+
+        # Torsion MAE if both provided
+        if (pred_phi is not None and pred_psi is not None and
+                ref_phi is not None and ref_psi is not None):
+            L = min(len(pred_phi), len(ref_phi))
+            if L > 0:
+                dphi = np.abs((pred_phi[:L] - ref_phi[:L]))
+                dpsi = np.abs((pred_psi[:L] - ref_psi[:L]))
+                # wrap to [-180,180]
+                dphi = np.minimum(dphi, 360.0 - dphi)
+                dpsi = np.minimum(dpsi, 360.0 - dpsi)
+                metrics["torsion_mae"] = float((np.mean(dphi) + np.mean(dpsi)) / 2.0)
+        return metrics
