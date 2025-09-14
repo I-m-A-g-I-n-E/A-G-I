@@ -16,6 +16,7 @@ from __future__ import annotations
 import urllib.request
 from pathlib import Path
 from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
+import numpy as np
 
 import torch
 
@@ -143,3 +144,34 @@ def bfactors_to_peptides(bfactors: Sequence[float], mode: str = "b_factor") -> t
     else:
         raise ValueError("bfactors_to_peptides: unknown mode")
     return score.to(dtype=torch.float32).clamp(0.0, 1.0)
+
+
+def parse_pdb_ca_coords(pdb_text: str, chain: Optional[str] = None) -> np.ndarray:
+    """Parse CA atom coordinates from PDB text for an optional chain.
+    Returns an array of shape (L,3) in residue order.
+    """
+    ca_records: List[Tuple[str, float, float, float]] = []
+    for line in pdb_text.splitlines():
+        if not line.startswith("ATOM"):
+            continue
+        try:
+            atom_name = line[12:16]
+            if atom_name.strip() != "CA":
+                continue
+            chain_id = line[21].strip()
+            if chain and chain_id != chain:
+                continue
+            resseq = line[22:26].strip()
+            icode = line[26].strip()
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+            res_uid = f"{chain_id}{resseq}{icode}"
+            ca_records.append((res_uid, x, y, z))
+        except Exception:
+            continue
+    if not ca_records:
+        return np.zeros((0, 3), dtype=np.float32)
+    # Preserve file order which is already residue order for a chain
+    coords = np.array([[x, y, z] for (_uid, x, y, z) in ca_records], dtype=np.float32)
+    return coords
