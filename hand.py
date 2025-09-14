@@ -330,18 +330,11 @@ def _pca_project_to_3d(vectors: torch.Tensor) -> np.ndarray:
     # Center
     mean = vectors.mean(dim=0, keepdim=True)
     X = vectors - mean
-    # SVD on covariance or directly on centered data (economy SVD)
-    # X = U S Vh, principal components are rows of Vh
-    # For stability, move to CPU for SVD if on MPS
-    X_cpu = X.detach().to('cpu')
-    try:
-        U, S, Vh = torch.linalg.svd(X_cpu, full_matrices=False)
-    except RuntimeError:
-        # Fallback to older torch.svd if needed
-        U, S, V = torch.svd(X_cpu)
-        Vh = V.t()
+    # SVD on centered data (economy SVD). Use svd_safe for MPS/CPU/CUDA stability.
+    from bio.devices import svd_safe
+    U, S, Vh = svd_safe(X, full_matrices=False)
     components = Vh[:3].t()  # (D, 3)
-    proj = (X_cpu @ components).numpy()
+    proj = (X @ components).detach().to('cpu').numpy()
     return proj
 
 def visualize_hand_tensor(hand_tensor: HandTensor, title: str = "Hand Tensor (PCA 3D)") -> None:

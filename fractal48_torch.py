@@ -12,9 +12,10 @@ from typing import Tuple, Dict, Optional, List
 import numpy as np
 from dataclasses import dataclass
 import time
+from bio.devices import get_device, svd_safe
 
-# For numerical compatibility in tests (float64 FFT, etc.), use CPU
-DEVICE = torch.device("mps")
+# Centralized device selection (CUDA > MPS > CPU, with env overrides)
+DEVICE = get_device()
 print(f"🔥 Torch lit on: {DEVICE}")
 
 
@@ -103,8 +104,9 @@ class Fractal48Layer(nn.Module):
         
         if self.use_learnable_lifting:
             # Learnable lifting with reversibility constraint
-            scale = torch.clamp(self.lift_scale, 0.5, 2.0)
-            shift_val = torch.clamp(self.lift_shift, -1, 1)
+            # Ensure parameters live on the same device as input
+            scale = torch.clamp(self.lift_scale.to(x.device), 0.5, 2.0)
+            shift_val = torch.clamp(self.lift_shift.to(x.device), -1, 1)
             
             # Forward lifting steps (still reversible due to structure)
             x_odd = x_odd + torch.round(x_even * scale + shift_val) / (2 ** shift)
@@ -220,9 +222,9 @@ class Fractal48Encoder(nn.Module):
         
         # Optional: bottleneck mixing (keep unitary for reversibility)
         if self.training:
-            # Orthogonalize the mixing matrix
+            # Orthogonalize the mixing matrix (use svd_safe for cross-backend stability)
             with torch.no_grad():
-                U, _, V = torch.linalg.svd(self.bottleneck_mix)
+                U, _, V = svd_safe(self.bottleneck_mix)
                 self.bottleneck_mix.data = U @ V
 
         # Apply channel mixing per spatial position
