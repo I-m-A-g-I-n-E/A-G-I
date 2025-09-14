@@ -8,6 +8,8 @@ in PDB format.
 import argparse
 import os
 import csv
+import time
+import sqlite3
 import numpy as np
 import torch
 
@@ -52,8 +54,20 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         certainty = certainty.repeat(int(max(1, args.repeat_windows)))
 
     # 2. Build the structure via pipeline
-    print("   - Building full backbone with Harmony Constraint Layer...")
+    print(f"   - Building full backbone with Harmony Constraint Layer...")
+    # Optional deterministic build seed for reproducibility of initial backbone jitter
+    if hasattr(args, 'build_seed') and args.build_seed is not None:
+        try:
+            torch.manual_seed(int(args.build_seed))
+        except Exception:
+            pass
+        try:
+            np.random.seed(int(args.build_seed))
+        except Exception:
+            pass
+    t0 = time.perf_counter()
     backbone, phi, psi, modes, conductor = pipeline.conduct_backbone(comp, seq)
+    t_build = time.perf_counter() - t0
 
     # 3. Save the final structure to a PDB file
     ensure_dir_for(output_pdb)
@@ -67,7 +81,9 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         print(f"   - Warning: could not create initial-labeled PDB copy: {e}")
 
     # 4. Run QC and save a report
+    t1 = time.perf_counter()
     report = pipeline.quality_report(conductor, backbone, phi, psi, modes)
+    t_qc_initial = time.perf_counter() - t1
 
     # 4b. Optional: evaluate against a reference PDB (CA-only metrics)
     if hasattr(args, 'ref_pdb') and args.ref_pdb:
@@ -102,16 +118,27 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
     if args.refine:
         weights = {'clash': args.w_clash, 'ca': args.w_ca, 'smooth': args.w_smooth, 'snap': args.w_snap}
         print(f"   - Refinement weights: {weights}")
+        t2 = time.perf_counter()
         refined_torsions, refined_backbone = pipeline.refine_backbone(
             conductor, backbone, phi, psi, modes, seq,
             max_iters=args.refine_iters, step_deg=args.refine_step, seed=args.refine_seed, weights=weights,
+            phaseA_frac=getattr(args, 'refine_phaseA_frac', 0.5),
+            step_deg_clash=getattr(args, 'refine_step_clash', None),
+            clash_weight=getattr(args, 'refine_clash_weight', None),
+            steric_only_phaseA=bool(getattr(args, 'refine_steric_only_phaseA', True)),
+            final_attempts=getattr(args, 'refine_final_attempts', 2000),
+            final_step=getattr(args, 'refine_final_step', 5.0),
+            final_window_increment=getattr(args, 'refine_final_window_inc', 25),
         )
+        t_refine = time.perf_counter() - t2
         refined_pdb_path = output_pdb.replace('.pdb', '_refined.pdb')
         conductor.save_to_pdb(refined_backbone, refined_pdb_path)
         # QC for refined
         rphi = np.array([t[0] for t in refined_torsions])
         rpsi = np.array([t[1] for t in refined_torsions])
+        t3 = time.perf_counter()
         qc_refined = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        t_qc_refined = time.perf_counter() - t3
         if hasattr(args, 'ref_pdb') and args.ref_pdb:
             try:
                 ref_txt = read_pdb(args.ref_pdb)
@@ -135,6 +162,12 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         print("  Rehearsal Complete")
         print(f"  - Initial Clashes: {report['summary']['num_clashes']}")
         print(f"  - Refined Clashes: {qc_refined['summary']['num_clashes']}")
+        # Orthogonality and timings
+        init_orth = float(report.get('summary', {}).get('orthogonality_index', 0.0))
+        ref_orth = float(qc_refined.get('summary', {}).get('orthogonality_index', 0.0))
+        print(f"  - Initial Orthogonality Index: {init_orth:.4f}")
+        print(f"  - Refined Orthogonality Index: {ref_orth:.4f}")
+        print(f"  - Time Build: {t_build:.3f}s, QC(initial): {t_qc_initial:.3f}s, Refine: {t_refine:.3f}s, QC(refined): {t_qc_refined:.3f}s")
         print(f"  - View refined structure: pymol {refined_pdb_path}")
         print("=" * 50)
     else:
@@ -159,8 +192,9 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
         csv_path = os.path.expanduser(args.metrics_csv)
         ensure_dir_for(csv_path)
         header = [
-            'output_base', 'stage', 'num_clashes', 'min_ca_ca', 'max_ca_ca',
-            'rmsd_ca', 'lddt_ca', 'tm_score_ca'
+            'output_base', 'stage', 'num_clashes', 'min_ca_ca', 'max_ca_ca', 'orthogonality_index',
+            'rmsd_ca', 'lddt_ca', 'tm_score_ca',
+            't_build_s', 't_qc_initial_s', 't_refine_s', 't_qc_refined_s'
         ]
         rows = []
         # load metrics from earlier saves if present
@@ -178,10 +212,11 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
                 init_ref = None
         rows.append([
             base_noext, 'initial',
-            init_qc.get('num_clashes', ''), init_qc.get('min_ca_ca', ''), init_qc.get('max_ca_ca', ''),
+            init_qc.get('num_clashes', ''), init_qc.get('min_ca_ca', ''), init_qc.get('max_ca_ca', ''), init_qc.get('orthogonality_index', ''),
             '' if init_ref is None else init_ref.get('rmsd_ca', ''),
             '' if init_ref is None else init_ref.get('lddt_ca', ''),
             '' if init_ref is None else init_ref.get('tm_score_ca', ''),
+            f"{t_build:.6f}", f"{t_qc_initial:.6f}", '', '',
         ])
         # Refined
         if args.refine:
@@ -196,10 +231,11 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
                 ref_summary = {}
             rows.append([
                 base_noext, 'refined',
-                ref_summary.get('num_clashes', ''), ref_summary.get('min_ca_ca', ''), ref_summary.get('max_ca_ca', ''),
+                ref_summary.get('num_clashes', ''), ref_summary.get('min_ca_ca', ''), ref_summary.get('max_ca_ca', ''), ref_summary.get('orthogonality_index', ''),
                 '' if ref_ref is None else ref_ref.get('rmsd_ca', ''),
                 '' if ref_ref is None else ref_ref.get('lddt_ca', ''),
                 '' if ref_ref is None else ref_ref.get('tm_score_ca', ''),
+                f"{t_build:.6f}", f"{t_qc_initial:.6f}", f"{t_refine:.6f}", f"{t_qc_refined:.6f}",
             ])
         # write/append CSV
         write_header = not os.path.exists(csv_path)
@@ -209,6 +245,83 @@ def generate(input_prefix: str, output_pdb: str, sequence: str | None = None, se
                 writer.writerow(header)
             writer.writerows(rows)
         print(f"   - Appended metrics to {csv_path}")
+
+    # 8. Optional SQLite metrics sink for concurrent-friendly writes
+    if getattr(args, 'metrics_db', None):
+        db_path = os.path.expanduser(args.metrics_db)
+        ensure_dir_for(db_path)
+        conn = sqlite3.connect(db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    output_base TEXT,
+                    stage TEXT,
+                    num_clashes INTEGER,
+                    min_ca_ca REAL,
+                    max_ca_ca REAL,
+                    orthogonality_index REAL,
+                    rmsd_ca REAL,
+                    lddt_ca REAL,
+                    tm_score_ca REAL,
+                    t_build_s REAL,
+                    t_qc_initial_s REAL,
+                    t_refine_s REAL,
+                    t_qc_refined_s REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            def insert_row(stage_label: str, summary: dict, refm: dict | None,
+                           t_build_v: float, t_qc_init_v: float, t_refine_v: float | None, t_qc_ref_v: float | None):
+                conn.execute(
+                    """
+                    INSERT INTO runs (
+                        output_base, stage, num_clashes, min_ca_ca, max_ca_ca, orthogonality_index,
+                        rmsd_ca, lddt_ca, tm_score_ca, t_build_s, t_qc_initial_s, t_refine_s, t_qc_refined_s
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    (
+                        base_noext, stage_label,
+                        int(summary.get('num_clashes', 0)),
+                        float(summary.get('min_ca_ca', 0.0)),
+                        float(summary.get('max_ca_ca', 0.0)),
+                        float(summary.get('orthogonality_index', 0.0)),
+                        None if refm is None else float(refm.get('rmsd_ca', 'nan')),
+                        None if refm is None else float(refm.get('lddt_ca', 'nan')),
+                        None if refm is None else float(refm.get('tm_score_ca', 'nan')),
+                        float(t_build_v), float(t_qc_init_v),
+                        None if t_refine_v is None else float(t_refine_v),
+                        None if t_qc_ref_v is None else float(t_qc_ref_v),
+                    )
+                )
+            # initial
+            import json
+            init_metrics_json = base_noext + "_initial_metrics.json"
+            init_ref = None
+            if os.path.exists(init_metrics_json):
+                try:
+                    with open(init_metrics_json, 'r') as fh:
+                        init_ref = json.load(fh)
+                except Exception:
+                    init_ref = None
+            insert_row('initial', report.get('summary', {}), init_ref, t_build, t_qc_initial, None, None)
+            # refined
+            if args.refine:
+                refined_metrics_json = base_noext + "_refined_metrics.json"
+                ref_ref = None
+                try:
+                    with open(refined_metrics_json, 'r') as fh:
+                        ref_ref = json.load(fh)
+                except Exception:
+                    ref_ref = None
+                insert_row('refined', qc_refined.get('summary', {}), ref_ref, t_build, t_qc_initial, t_refine, t_qc_refined)
+            conn.commit()
+            print(f"   - Inserted metrics into {db_path}")
+        finally:
+            conn.close()
 
     print("\n" + "=" * 50)
     print("  Structure Generation Complete")
@@ -258,6 +371,15 @@ if __name__ == "__main__":
     parser.add_argument("--ref-chain", type=str, default=None, help="Optional chain ID for the reference PDB")
     # Metrics aggregation
     parser.add_argument("--metrics-csv", type=str, default=None, help="Optional path to append a CSV summary of initial/refined metrics")
+    parser.add_argument("--metrics-db", type=str, default=None, help="Optional SQLite DB path to store metrics rows (concurrent-friendly)")
+    # Advanced refinement strategy controls
+    parser.add_argument("--refine-phaseA-frac", type=float, default=0.5, dest="refine_phaseA_frac", help="Fraction of iterations spent in clash-focused Phase A")
+    parser.add_argument("--refine-step-clash", type=float, default=None, dest="refine_step_clash", help="Step size (deg) for clash-focused Phase A")
+    parser.add_argument("--refine-clash-weight", type=float, default=None, dest="refine_clash_weight", help="Clash weight used during Phase A and final pass")
+    parser.add_argument("--refine-steric-only-phaseA", action="store_true", dest="refine_steric_only_phaseA", help="Use steric-only objective in Phase A")
+    parser.add_argument("--refine-final-attempts", type=int, default=2000, dest="refine_final_attempts", help="Max attempts in final clash-targeted pass")
+    parser.add_argument("--refine-final-step", type=float, default=5.0, dest="refine_final_step", help="Step size in final clash-targeted pass")
+    parser.add_argument("--refine-final-window-inc", type=int, default=25, dest="refine_final_window_inc", help="Attempts interval to expand local window in final pass")
     args = parser.parse_args()
 
     generate(args.input_prefix, args.output_pdb, args.sequence, args.sequence_file)

@@ -84,16 +84,24 @@ def refine_backbone(
     step_deg: float = 2.0,
     seed: Optional[int] = None,
     weights: Optional[Dict[str, float]] = None,
+    **refine_kwargs,
 ) -> Tuple[List[Tuple[float, float]], np.ndarray]:
     """Refine torsions to reduce dissonance and clashes.
 
     Returns (refined_torsions, refined_backbone).
     """
     init_torsions = [(float(phi[i]), float(psi[i])) for i in range(len(phi))]
-    refined_torsions, refined_backbone = conductor.refine_torsions(
-        init_torsions, modes, sequence,
-        max_iters=max_iters, step_deg=step_deg, seed=seed, weights=weights,
-    )
+    try:
+        refined_torsions, refined_backbone = conductor.refine_torsions(
+            init_torsions, modes, sequence,
+            max_iters=max_iters, step_deg=step_deg, seed=seed, weights=weights, **refine_kwargs,
+        )
+    except TypeError:
+        # Backward compatibility: conductor.refine_torsions may not accept advanced kwargs
+        refined_torsions, refined_backbone = conductor.refine_torsions(
+            init_torsions, modes, sequence,
+            max_iters=max_iters, step_deg=step_deg, seed=seed, weights=weights,
+        )
     return refined_torsions, refined_backbone
 
 

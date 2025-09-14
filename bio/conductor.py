@@ -1,8 +1,13 @@
 import numpy as np
 import torch
-from .geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
-from .key_estimator import estimate_key_and_modes
-from .scale_and_meter import snap_to_scale, enforce_meter
+try:
+    from .geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
+    from .key_estimator import estimate_key_and_modes
+    from .scale_and_meter import snap_to_scale, enforce_meter
+except ImportError:  # allow running as a script: python bio/conductor.py
+    from bio.geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
+    from bio.key_estimator import estimate_key_and_modes
+    from bio.scale_and_meter import snap_to_scale, enforce_meter
 
 class Conductor:
     """
@@ -287,6 +292,31 @@ class Conductor:
     # -------------------------
     # Quality Control Utilities
     # -------------------------
+    def _min_inter_residue_distances(self, backbone: np.ndarray, skip_near: int = 2) -> np.ndarray:
+        """Compute a matrix D where D[i,j] is the minimum atom-atom distance between
+        residues i and j (over N, CA, C), with D[i,j] = inf for |i-j| <= skip_near.
+
+        This is a vectorized implementation replacing nested loops.
+        """
+        # backbone: (L, 3, 3)
+        L = backbone.shape[0]
+        # Positions shaped (L, A=3, C=3)
+        P = backbone.astype(np.float32)
+        # Compute all atom-atom distances between residue pairs using broadcasting:
+        # A: (L,1,3,1,3), B: (1,L,1,3,3) -> diff: (L,L,3,3,3)
+        A = P[:, None, :, None, :]
+        B = P[None, :, None, :, :]
+        diff = A - B  # (L, L, 3, 3, 3)
+        # Euclidean distances per atom pair across last axis -> (L, L, 3, 3)
+        dist = np.linalg.norm(diff, axis=-1)
+        # Min over atom pairs -> (L, L)
+        D = dist.min(axis=(2, 3))
+        # Mask near-sequence neighbors (|i-j| <= skip_near)
+        idx = np.arange(L)
+        ii, jj = np.meshgrid(idx, idx, indexing='ij')
+        mask_near = (np.abs(ii - jj) <= int(skip_near))
+        D[mask_near] = np.inf
+        return D
     @staticmethod
     def _dist(a: np.ndarray, b: np.ndarray) -> float:
         return float(np.linalg.norm(a - b))
@@ -350,24 +380,22 @@ class Conductor:
             sum(d > tol_ang for d in dev_ang_C_N_CA)
         )
 
-        # Simple clash detection: check minimum distance between heavy atoms for non-adjacent residues
-        atoms = [N, CA, C]
+        # Simple clash detection: vectorized via inter-residue min distances
         clash_threshold = 2.0  # Å
-        clashes = []
-        for i in range(L):
-            for j in range(i+3, L):  # skip close sequence neighbors
-                min_d = 1e9
-                for A in atoms:
-                    for B in atoms:
-                        d = self._dist(A[i], B[j])
-                        if d < min_d:
-                            min_d = d
-                if min_d < clash_threshold:
-                    clashes.append((i, j, min_d))
-                    if len(clashes) >= 50:
-                        break
-            if len(clashes) >= 50:
-                break
+        Dmin = self._min_inter_residue_distances(backbone, skip_near=2)  # allow i+3 and beyond
+        # Find indices where clash occurs
+        ii, jj = np.where(np.triu((Dmin < clash_threshold), k=1))
+        # Construct clashes list up to 50 entries
+        clashes = [(int(i), int(j), float(Dmin[i, j])) for i, j in zip(ii, jj)][:50]
+        # Orthogonality index: fraction of non-neighbor residue pairs whose min atom-atom distance
+        # exceeds a safe separation threshold (use the same repulsive threshold as in dissonance, 3.2 Å)
+        safe_thr = 3.2
+        valid = np.isfinite(Dmin)
+        total_pairs = int(np.sum(valid))
+        if total_pairs > 0:
+            orth_frac = float(np.sum((Dmin >= safe_thr) & valid) / total_pairs)
+        else:
+            orth_frac = 0.0
 
         report = {
             "lengths": {
@@ -390,6 +418,7 @@ class Conductor:
                 "num_clashes": int(len(clashes)),
                 "min_ca_ca": float(min(ca_ca) if ca_ca else 0.0),
                 "max_ca_ca": float(max(ca_ca) if ca_ca else 0.0),
+                "orthogonality_index": float(orth_frac),
             },
             "clashes": clashes,
         }
@@ -409,16 +438,14 @@ class Conductor:
         ca_ca = np.array([np.linalg.norm(CA[i] - CA[i-1]) for i in range(1, L)], dtype=np.float32)
         E_ca = float(np.mean((ca_ca - 3.8) ** 2)) if L > 1 else 0.0
 
-        # Physical: repulsive for non-adjacent atoms closer than 3.2 Å
-        atoms = [N, CA, C]
-        rep = 0.0
+        # Physical: repulsive for non-adjacent atoms closer than 3.2 Å (vectorized)
         thr = 3.2
-        for i in range(L):
-            for j in range(i+3, L):
-                # min atom-atom distance between residues i and j
-                dmin = min(np.linalg.norm(A[i] - B[j]) for A in atoms for B in atoms)
-                if dmin < thr:
-                    rep += float((thr - dmin) ** 2)
+        Dmin = self._min_inter_residue_distances(backbone, skip_near=2)
+        # Only distances below threshold contribute
+        mask = Dmin < thr
+        # Exclude infs (masked near neighbors)
+        contrib = (thr - Dmin[mask]) ** 2 if np.any(mask) else np.array([], dtype=np.float32)
+        rep = float(contrib.sum())
         E_clash = rep / max(1, L)
 
         # Harmony: smoothness (finite difference of torsions)
@@ -459,18 +486,37 @@ class Conductor:
         # Evaluate initial
         bb_curr = self.build_backbone_from_torsions(torsions, sequence)
         best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)
+        qc_curr = self.quality_check(bb_curr, np.array([t[0] for t in torsions]), np.array([t[1] for t in torsions]), modes)
+        best_num_clashes = qc_curr['summary']['num_clashes']
+        best_min_caca = qc_curr['summary']['min_ca_ca']
+
         iters_since_improvement = 0
 
-        for i in range(max_iters):
-            # Annealed step size (linear decay)
-            progress = i / max(1, max_iters)
-            current_step = float(step_deg) * (1.0 - progress)
+        # Advanced refinement config defaults (kept local to avoid signature bloat)
+        phaseA_frac = 0.4
+        step_deg_clash = None
+        clash_weight = None
+        steric_only_phaseA = True
+        final_attempts = 2000
+        final_step = 5.0
+        final_window_increment = 25
 
-            k = max(1, L // 5)
+        # Phase A: clash-focused
+        phaseA_iters = max(1, int(max_iters * 0.4))
+        wA = dict(weights)
+        wA['clash'] = float(clash_weight) if clash_weight is not None else max(wA.get('clash', 1.5), 10.0)
+        stepA = float(step_deg_clash) if step_deg_clash is not None else max(float(step_deg), 3.5)
+        # Phase-A scoring weights (steric-only if requested)
+        weightsA = {'ca': 0.0, 'smooth': 0.0, 'snap': 0.0, 'clash': wA['clash']} if steric_only_phaseA else wA
+
+        for i in range(phaseA_iters):
+            progress = i / max(1, phaseA_iters)
+            current_step = stepA * (1.0 - 0.5 * progress)  # gentler anneal in clash phase
+
+            k = max(1, L // 3)
             idxs = rng.choice(L, size=k, replace=False)
             prop = torsions.copy()
             prop[idxs] += rng.uniform(-current_step, current_step, size=(k, 2)).astype(np.float32)
-            # snap to scale
             for idx in idxs:
                 phi, psi = prop[idx]
                 sphi, spsi = snap_to_scale(modes[idx], float(phi), float(psi))
@@ -478,30 +524,84 @@ class Conductor:
                 prop[idx, 1] = spsi
 
             bb_prop = self.build_backbone_from_torsions(prop, sequence)
-            score_prop = self.calculate_dissonance(bb_prop, prop, modes, weights)
-            if score_prop < best_score:
+            score_curr = self.calculate_dissonance(bb_curr, torsions, modes, weightsA)
+            score_prop = self.calculate_dissonance(bb_prop, prop, modes, weightsA)
+            qc_prop = self.quality_check(bb_prop, np.array([t[0] for t in prop]), np.array([t[1] for t in prop]), modes)
+            reduce_clash = qc_prop['summary']['num_clashes'] < best_num_clashes
+            increase_min = qc_prop['summary']['min_ca_ca'] > best_min_caca
+            if score_prop < score_curr or reduce_clash or increase_min:
                 torsions = prop
                 bb_curr = bb_prop
-                best_score = score_prop
+                best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)  # track balanced score
+                qc_curr = qc_prop
+                best_num_clashes = qc_curr['summary']['num_clashes']
+                best_min_caca = qc_curr['summary']['min_ca_ca']
                 iters_since_improvement = 0
             else:
                 iters_since_improvement += 1
-
             if iters_since_improvement >= patience:
-                print(f"   - Rehearsal converged after {i+1} iterations.")
                 break
+
+        # Phase B: balanced refinement
+        remain = max_iters - phaseA_iters
+        if remain > 0:
+            for j in range(remain):
+                progress = j / max(1, remain)
+                current_step = float(step_deg) * (1.0 - progress)
+
+                k = max(1, L // 5)
+                idxs = rng.choice(L, size=k, replace=False)
+                prop = torsions.copy()
+                prop[idxs] += rng.uniform(-current_step, current_step, size=(k, 2)).astype(np.float32)
+                for idx in idxs:
+                    phi, psi = prop[idx]
+                    sphi, spsi = snap_to_scale(modes[idx], float(phi), float(psi))
+                    prop[idx, 0] = sphi
+                    prop[idx, 1] = spsi
+
+                bb_prop = self.build_backbone_from_torsions(prop, sequence)
+                score_prop = self.calculate_dissonance(bb_prop, prop, modes, weights)
+                if score_prop < best_score:
+                    torsions = prop
+                    bb_curr = bb_prop
+                    best_score = score_prop
+                    # Update QC baselines occasionally to allow objective drift toward better geometry
+                    qc_curr = self.quality_check(bb_curr, np.array([t[0] for t in torsions]), np.array([t[1] for t in torsions]), modes)
+                    best_num_clashes = min(best_num_clashes, qc_curr['summary']['num_clashes'])
+                    best_min_caca = max(best_min_caca, qc_curr['summary']['min_ca_ca'])
+                    iters_since_improvement = 0
+                else:
+                    # Multi-objective acceptance in balanced phase too
+                    qc_prop = self.quality_check(bb_prop, np.array([t[0] for t in prop]), np.array([t[1] for t in prop]), modes)
+                    reduce_clash = qc_prop['summary']['num_clashes'] < qc_curr['summary']['num_clashes']
+                    increase_min = qc_prop['summary']['min_ca_ca'] > qc_curr['summary']['min_ca_ca']
+                    if reduce_clash or increase_min:
+                        torsions = prop
+                        bb_curr = bb_prop
+                        qc_curr = qc_prop
+                        best_num_clashes = min(best_num_clashes, qc_curr['summary']['num_clashes'])
+                        best_min_caca = max(best_min_caca, qc_curr['summary']['min_ca_ca'])
+                        # balanced score update
+                        best_score = min(best_score, self.calculate_dissonance(bb_curr, torsions, modes, weights))
+                        iters_since_improvement = 0
+                    else:
+                        iters_since_improvement += 1
+
+                if iters_since_improvement >= patience:
+                    print(f"   - Rehearsal converged after {phaseA_iters + j + 1} iterations.")
+                    break
 
         # Final authoritative pass: targeted clash resolution
         # If clashes remain, aggressively fix them by local torsion tweaks
         rep_weights = dict(weights)
-        rep_weights['clash'] = max(rep_weights.get('clash', 1.5), 10.0)
+        rep_weights['clash'] = float(clash_weight) if clash_weight is not None else max(rep_weights.get('clash', 1.5), 10.0)
         # Evaluate current clashes using QC
         rphi = np.array([t[0] for t in torsions])
         rpsi = np.array([t[1] for t in torsions])
         qc = self.quality_check(bb_curr, rphi, rpsi, modes)
         clashes = qc['clashes']
         attempts = 0
-        max_attempts = 1000
+        max_attempts = int(final_attempts)
         local_window = 2
         while clashes and attempts < max_attempts:
             # Work on the worst clash (smallest distance)
@@ -512,7 +612,7 @@ class Conductor:
             idxs = np.unique(idxs)
             prop = torsions.copy()
             # Use a modest step that can still move apart
-            step = 3.5
+            step = float(final_step)
             rng = np.random.default_rng(seed)
             deltas = rng.uniform(-step, step, size=(len(idxs), 2)).astype(np.float32)
             for k_idx, idx in enumerate(idxs):
@@ -536,7 +636,7 @@ class Conductor:
             else:
                 attempts += 1
                 # small adaptive change of window/step if stuck
-                if attempts % 50 == 0 and local_window < 4:
+                if attempts % max(1, int(final_window_increment)) == 0 and local_window < 4:
                     local_window += 1
         return torsions.tolist(), bb_curr
 
