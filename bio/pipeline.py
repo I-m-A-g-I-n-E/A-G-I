@@ -49,8 +49,8 @@ def compose_sequence(
     all_runs_aligned = [cv[:min_windows] for cv in all_runs]
     ensemble = torch.stack(all_runs_aligned, dim=0)  # (samples, W, 48)
     mean_composition = ensemble.mean(dim=0)          # (W, 48)
-    variance_composition = ensemble.var(dim=0)       # (W, 48)
-    harmonic_certainty = 1.0 - variance_composition.mean(dim=-1)  # (W,)
+    variance_composition = ensemble.var(dim=0, unbiased=False)       # (W, 48)
+    harmonic_certainty = (1.0 - variance_composition.mean(dim=-1)).clamp(0.0, 1.0)  # (W,)
 
     return mean_composition.to(torch.float32), harmonic_certainty.to(torch.float32)
 

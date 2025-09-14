@@ -5,6 +5,7 @@ Validates reversibility, performance, and mathematical properties
 """
 
 import matplotlib
+import pytest
 
 
 import torch

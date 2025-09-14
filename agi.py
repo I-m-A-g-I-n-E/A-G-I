@@ -276,6 +276,12 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
     qc_path = output_pdb.rsplit('.', 1)[0] + '_qc.json'
     save_json(qc, qc_path)
 
+    # Compute initial dissonance scalar
+    torsions_init = np.stack([phi, psi], axis=1)
+    diss_initial = conductor.calculate_dissonance(backbone, torsions_init, modes, {
+        'clash': 1.5, 'ca': 1.0, 'smooth': 0.2, 'snap': 0.5,
+    })
+
     # Optional refine
     if refine:
         weights = {'clash': w_clash, 'ca': w_ca, 'smooth': w_smooth, 'snap': w_snap}
@@ -290,18 +296,25 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
         qc_ref = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
         qc_ref_path = output_pdb.rsplit('.', 1)[0] + '_refined_qc.json'
         save_json(qc_ref, qc_ref_path)
+        # Refined dissonance
+        torsions_ref = np.stack([rphi, rpsi], axis=1)
+        diss_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
+    else:
+        diss_refined = diss_initial
 
     # Optional 3ch sonify
     if sonify_3ch and audio_wav:
         kore = pipeline.estimate_kore(comp, sequence.strip().upper())
         W = int(certainty.shape[0])
-        # Use initial/ refined dissonance scalars — approximate with 0.0 if not refined yet
-        diss_scalar = 0.0
-        diss_vec = pipeline.dissonance_scalar_to_vec(float(diss_scalar), W)
-        wave = pipeline.sonify_3ch(comp, kore, certainty, diss_vec, bpm=bpm, stride_ticks=stride_ticks,
-                                   center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
-        pipeline.save_wav(wave, audio_wav)
-        click.echo(f"Saved audio: {audio_wav}")
+        diss_init_vec = pipeline.dissonance_scalar_to_vec(float(diss_initial), W)
+        wave_init = pipeline.sonify_3ch(comp, kore, certainty, diss_init_vec, bpm=bpm, stride_ticks=stride_ticks,
+                                        center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
+        pipeline.save_wav(wave_init, audio_wav.replace('.wav', '_initial.wav'))
+        if refine:
+            diss_ref_vec = pipeline.dissonance_scalar_to_vec(float(diss_refined), W)
+            wave_ref = pipeline.sonify_3ch(comp, kore, certainty, diss_ref_vec, bpm=bpm, stride_ticks=stride_ticks,
+                                           center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
+            pipeline.save_wav(wave_ref, audio_wav.replace('.wav', '_refined.wav'))
 
     click.echo("\n=== Play Complete ===")
     click.echo(f"PDB: {output_pdb}")
