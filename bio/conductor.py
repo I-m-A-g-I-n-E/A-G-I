@@ -1,5 +1,9 @@
 import numpy as np
 import torch
+import time
+import json
+import os
+from concurrent.futures import ProcessPoolExecutor
 try:
     from .geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
     from .key_estimator import estimate_key_and_modes
@@ -8,6 +12,55 @@ except ImportError:  # allow running as a script: python bio/conductor.py
     from bio.geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
     from bio.key_estimator import estimate_key_and_modes
     from bio.scale_and_meter import snap_to_scale, enforce_meter
+
+def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[float, int]:
+    """Compute the best (max) min CA-CA distance among a batch of candidate torsions.
+
+    Returns (best_min_caca_value, relative_index_in_batch). If batch is empty, returns (-inf, -1).
+    """
+    sequence, batch = args
+    if not batch:
+        return float('-inf'), -1
+    # Ideal parameters (mirror build_backbone_from_torsions)
+    b_N_CA = IDEAL_GEOMETRY["N-CA"]
+    b_CA_C = IDEAL_GEOMETRY["CA-C"]
+    b_C_N = IDEAL_GEOMETRY["C-N"]
+    ang_CA_C_N = IDEAL_GEOMETRY["CA-C-N_angle"]
+    ang_C_N_CA = IDEAL_GEOMETRY["C-N-CA_angle"]
+    ang_N_CA_C = IDEAL_GEOMETRY["N-CA-C_angle"]
+    omega = 180.0
+    L = len(sequence)
+
+    best_val = float('-inf')
+    best_idx = -1
+    for idx, torsions in enumerate(batch):
+        # Seed first residue
+        N0 = np.array([0.0, 0.0, 0.0])
+        CA0 = np.array([b_N_CA, 0.0, 0.0])
+        theta = np.deg2rad(180.0 - ang_N_CA_C)
+        C0 = CA0 + np.array([b_CA_C * np.cos(theta), b_CA_C * np.sin(theta), 0.0])
+        N_coords = [N0]
+        CA_coords = [CA0]
+        C_coords = [C0]
+        phi = torsions[:, 0]
+        psi = torsions[:, 1]
+        for i in range(1, L):
+            Ni = place_next_atom(N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1], length=b_C_N, angle=ang_CA_C_N, torsion=omega)
+            CAi = place_next_atom(CA_coords[i - 1], C_coords[i - 1], Ni, length=b_N_CA, angle=ang_C_N_CA, torsion=phi[i])
+            Ci = place_next_atom(C_coords[i - 1], Ni, CAi, length=b_CA_C, angle=ang_N_CA_C, torsion=psi[i])
+            N_coords.append(Ni)
+            CA_coords.append(CAi)
+            C_coords.append(Ci)
+        CA = np.stack(CA_coords, axis=0)
+        if CA.shape[0] >= 2:
+            d = np.linalg.norm(CA[1:] - CA[:-1], axis=1)
+            dmin = float(np.min(d)) if d.size > 0 else float('-inf')
+        else:
+            dmin = float('-inf')
+        if dmin > best_val:
+            best_val = dmin
+            best_idx = idx
+    return best_val, best_idx
 
 class Conductor:
     """
@@ -520,16 +573,31 @@ class Conductor:
         return float(total)
 
     def refine_torsions(self, phi_psi_initial: list, modes: list[str], sequence: str,
-                        max_iters: int = 150, step_deg: float = 2.0, seed: int | None = None,
-                        weights: dict | None = None, patience: int = 50,
-                        *,
-                        phaseA_frac: float = 0.4,
-                        step_deg_clash: float | None = None,
-                        clash_weight: float | None = None,
-                        steric_only_phaseA: bool = True,
-                        final_attempts: int = 2000,
-                        final_step: float = 5.0,
-                        final_window_increment: int = 25) -> tuple[list, np.ndarray]:
+                       max_iters: int = 150, step_deg: float = 2.0, seed: int | None = None,
+                       weights: dict | None = None, patience: int = 50,
+                       *,
+                       phaseA_frac: float = 0.4,
+                       step_deg_clash: float | None = None,
+                       clash_weight: float | None = None,
+                       steric_only_phaseA: bool = True,
+                       final_attempts: int = 2000,
+                       final_step: float = 5.0,
+                       final_window_increment: int = 25,
+                       # Spacing control knobs
+                       neighbor_threshold: float = 3.2,
+                       spacing_max_attempts: int = 300,
+                       spacing_top_bins: int = 4,
+                       spacing_continue_full: bool = False,
+                       spacing_cross_mode: bool = False,
+                       critical_override_iters: int = 0,
+                       # Parallelism
+                       num_workers: int = 0,
+                       eval_batch: int = 256,
+                       # Debug/trace controls
+                       debug_trace_path: str | None = None,
+                       debug_log_every: int = 25,
+                       debug_verbose: bool = False,
+                       wall_timeout_sec: float | None = None) -> tuple[list, np.ndarray]:
         """
         Refines a set of torsion angles to minimize dissonance while staying on-key.
         Returns (refined_torsions_list, refined_backbone)
@@ -540,6 +608,32 @@ class Conductor:
         if weights is None:
             weights = {'ca': 1.0, 'clash': 1.5, 'smooth': 0.2, 'snap': 0.5}
 
+        # Auto workers fallback
+        try:
+            if int(num_workers) <= 0:
+                cpu = os.cpu_count() or 2
+                num_workers = max(1, cpu - 1)
+        except Exception:
+            num_workers = 1
+
+        # Setup tracing and timeout
+        t0 = time.time()
+        trace_f = None
+        def _trace(event: dict):
+            nonlocal trace_f
+            if debug_trace_path is None:
+                return
+            try:
+                if trace_f is None:
+                    os.makedirs(os.path.dirname(debug_trace_path) or '.', exist_ok=True)
+                    trace_f = open(debug_trace_path, 'a', buffering=1)
+                event = dict(event)
+                event['ts'] = time.time()
+                trace_f.write(json.dumps(event) + "\n")
+                trace_f.flush()
+            except Exception:
+                pass
+
         # Evaluate initial
         bb_curr = self.build_backbone_from_torsions(torsions, sequence)
         best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)
@@ -549,10 +643,22 @@ class Conductor:
 
         iters_since_improvement = 0
 
+        _trace({
+            'event': 'start',
+            'L': int(L),
+            'max_iters': int(max_iters),
+            'step_deg': float(step_deg),
+            'weights': weights,
+            'phaseA_frac': float(phaseA_frac),
+            'seed': int(seed) if seed is not None else None,
+            'qc_initial': qc_curr['summary'],
+        })
+
         # Stage 1: Spacing Pass (Physical Integrity First)
         # Push all adjacent CA-CA distances above neighbor_threshold by discrete note jumps
-        neighbor_threshold = 3.2
-        max_spacing_attempts = 300
+        # Use provided spacing controls
+        neighbor_threshold = float(neighbor_threshold)
+        max_spacing_attempts = int(spacing_max_attempts)
         spacing_attempts = 0
         bins_tried = 0
         from .scale_and_meter import SCALE_TABLE
@@ -575,48 +681,97 @@ class Conductor:
 
         pairs = adjacent_pairs_below_thr(bb_curr, neighbor_threshold)
         while pairs and spacing_attempts < max_spacing_attempts:
+            if wall_timeout_sec is not None and (time.time() - t0) > float(wall_timeout_sec):
+                _trace({'event': 'timeout_abort', 'phase': 'spacing', 'spacing_attempts': int(spacing_attempts)})
+                break
             spacing_attempts += 1
             improved = False
             # Work each problematic adjacent pair
             for (ia, ib) in pairs:
                 # Enumerate up to K nearest bins for each residue in the pair
-                def top_bins(bins: np.ndarray, curr: np.ndarray, top: int = 4) -> np.ndarray:
+                def top_bins(bins: np.ndarray, curr: np.ndarray, top: int = spacing_top_bins) -> np.ndarray:
                     d = np.linalg.norm(bins - curr, axis=1)
                     ords = np.argsort(d)
                     return bins[ords[:min(top, len(ords))]]
 
-                bins_a = SCALE_TABLE[modes[ia]]
-                bins_b = SCALE_TABLE[modes[ib]]
+                if spacing_cross_mode:
+                    bins_union = np.vstack([SCALE_TABLE['helix'], SCALE_TABLE['sheet'], SCALE_TABLE['loop']])
+                    bins_a = bins_union
+                    bins_b = bins_union
+                else:
+                    bins_a = SCALE_TABLE[modes[ia]]
+                    bins_b = SCALE_TABLE[modes[ib]]
                 A = top_bins(bins_a, torsions[ia])
                 B = top_bins(bins_b, torsions[ib])
 
                 best_local_min = global_min_caca(bb_curr)
-                best_prop = None
+                best_tmp = None
+                # Prepare candidates
+                cand_tors_list: list[np.ndarray] = []
                 for a in A:
                     for b in B:
-                        bins_tried += 1
                         tmp = torsions.copy()
-                        sphi_a, spsi_a = snap_to_scale(modes[ia], float(a[0]), float(a[1]))
-                        tmp[ia, 0] = sphi_a
-                        tmp[ia, 1] = spsi_a
-                        sphi_b, spsi_b = snap_to_scale(modes[ib], float(b[0]), float(b[1]))
-                        tmp[ib, 0] = sphi_b
-                        tmp[ib, 1] = spsi_b
-                        bb_tmp = self.build_backbone_from_torsions(tmp, sequence)
+                        if spacing_cross_mode:
+                            tmp[ia, 0] = float(a[0]); tmp[ia, 1] = float(a[1])
+                            tmp[ib, 0] = float(b[0]); tmp[ib, 1] = float(b[1])
+                        else:
+                            sphi_a, spsi_a = snap_to_scale(modes[ia], float(a[0]), float(a[1]))
+                            tmp[ia, 0] = sphi_a
+                            tmp[ia, 1] = spsi_a
+                            sphi_b, spsi_b = snap_to_scale(modes[ib], float(b[0]), float(b[1]))
+                            tmp[ib, 0] = sphi_b
+                            tmp[ib, 1] = spsi_b
+                        cand_tors_list.append(tmp)
+                bins_tried += len(cand_tors_list)
+
+                def _eval_min(batch: list[np.ndarray]) -> tuple[float, int]:
+                    best_val = best_local_min
+                    best_idx = -1
+                    for idx, cand in enumerate(batch):
+                        bb_tmp = self.build_backbone_from_torsions(cand, sequence)
+                        mmin = global_min_caca(bb_tmp)
+                        if mmin > best_val:
+                            best_val = mmin
+                            best_idx = idx
+                    return best_val, best_idx
+
+                if int(num_workers) > 1 and len(cand_tors_list) >= 2:
+                    # Batch the candidates
+                    batches = [cand_tors_list[i:i+int(eval_batch)] for i in range(0, len(cand_tors_list), int(eval_batch))]
+                    best_val = best_local_min
+                    best_pair_idx = -1
+                    offset = 0
+                    with ProcessPoolExecutor(max_workers=int(num_workers)) as ex:
+                        # Evaluate in parallel by mapping over small batches to reduce IPC
+                        results = list(ex.map(_min_caca_for_torsions_batch, [(sequence, batch) for batch in batches]))
+                    for bidx, (val, rel_idx) in enumerate(results):
+                        if rel_idx >= 0 and val > best_val:
+                            best_val = val
+                            best_pair_idx = offset + rel_idx
+                        offset += len(batches[bidx])
+                    if best_pair_idx >= 0:
+                        best_local_min = best_val
+                        best_tmp = cand_tors_list[best_pair_idx]
+                else:
+                    # Sequential fallback
+                    for idx, cand in enumerate(cand_tors_list):
+                        bb_tmp = self.build_backbone_from_torsions(cand, sequence)
                         mmin = global_min_caca(bb_tmp)
                         if mmin > best_local_min:
                             best_local_min = mmin
-                            best_prop = (tmp, bb_tmp)
+                            best_tmp = cand
 
                 # Accept immediately if we found a combination that increases global min CA-CA
-                if best_prop is not None:
-                    torsions, bb_curr = best_prop
+                if best_tmp is not None:
+                    torsions = best_tmp
+                    bb_curr = self.build_backbone_from_torsions(torsions, sequence)
                     best_min_caca = best_local_min
                     improved = True
                     # Reset Phase trackers as we changed state
                     iters_since_improvement = 0
             if not improved:
-                break
+                if not spacing_continue_full:
+                    break
             # Recompute list of problematic pairs
             pairs = adjacent_pairs_below_thr(bb_curr, neighbor_threshold)
 
@@ -629,6 +784,13 @@ class Conductor:
             }
         except Exception:
             self.last_refine_stats = {'spacing_attempts': int(spacing_attempts), 'bins_tried': int(bins_tried)}
+
+        _trace({
+            'event': 'spacing_done',
+            'spacing_attempts': int(spacing_attempts),
+            'bins_tried': int(bins_tried),
+            'final_min_ca_ca': float(self.last_refine_stats.get('final_min_ca_ca_after_spacing', 0.0)),
+        })
 
         # Precompute contiguous same-mode segments for meter-aware updates
         segments: list[tuple[int, int, str]] = []  # (start, end, mode) with end exclusive
@@ -650,6 +812,9 @@ class Conductor:
         weightsA = {'ca': 0.0, 'smooth': 0.0, 'snap': 0.0, 'clash': wA['clash']} if steric_only_phaseA else wA
 
         for i in range(phaseA_iters):
+            if wall_timeout_sec is not None and (time.time() - t0) > float(wall_timeout_sec):
+                _trace({'event': 'timeout_abort', 'phase': 'A', 'iter': int(i)})
+                break
             progress = i / max(1, phaseA_iters)
             current_step = stepA * (1.0 - 0.5 * progress)  # gentler anneal in clash phase
 
@@ -685,7 +850,13 @@ class Conductor:
             qc_prop = self.quality_check(bb_prop, np.array([t[0] for t in prop]), np.array([t[1] for t in prop]), modes)
             reduce_clash = qc_prop['summary']['num_clashes'] < best_num_clashes
             increase_min = qc_prop['summary']['min_ca_ca'] > best_min_caca
-            if score_prop < score_curr or reduce_clash or increase_min:
+            accepted = (score_prop < score_curr) or reduce_clash or increase_min
+            if (debug_verbose or (i % max(1, int(debug_log_every)) == 0)):
+                _trace({'event': 'phaseA_iter', 'iter': int(i), 'progress': float(progress), 'current_step': float(current_step),
+                        'score_curr': float(score_curr), 'score_prop': float(score_prop), 'accepted': bool(accepted),
+                        'reduce_clash': bool(reduce_clash), 'increase_min': bool(increase_min),
+                        'best_num_clashes': int(best_num_clashes), 'best_min_caca': float(best_min_caca)})
+            if accepted:
                 torsions = prop
                 bb_curr = bb_prop
                 best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)  # track balanced score
@@ -702,6 +873,9 @@ class Conductor:
         remain = max_iters - phaseA_iters
         if remain > 0:
             for j in range(remain):
+                if wall_timeout_sec is not None and (time.time() - t0) > float(wall_timeout_sec):
+                    _trace({'event': 'timeout_abort', 'phase': 'B', 'iter': int(j)})
+                    break
                 progress = j / max(1, remain)
                 current_step = float(step_deg) * (1.0 - progress)
 
@@ -818,10 +992,13 @@ class Conductor:
             min_idx, min_val = 1, float('inf')
         target_thr = 3.2
         attempts2 = 0
-        max_attempts2 = 2000
+        max_attempts2 = int(final_attempts)
         local_window2 = 2
         from .scale_and_meter import SCALE_TABLE
         while min_val < target_thr and attempts2 < max_attempts2:
+            if wall_timeout_sec is not None and (time.time() - t0) > float(wall_timeout_sec):
+                _trace({'event': 'timeout_abort', 'phase': 'final_repair', 'attempts2': int(attempts2)})
+                break
             l = max(0, min_idx - local_window2 - 1)
             r = min(L, min_idx + local_window2 + 1)
             prop = torsions.copy()
@@ -845,7 +1022,11 @@ class Conductor:
             CAp = bb_prop[:, 1, :]
             ca_dp = np.linalg.norm(CAp[1:] - CAp[:-1], axis=1)
             minp = float(np.min(ca_dp)) if ca_dp.size > 0 else float('inf')
-            if minp > min_val or minp >= target_thr:
+            improved = (minp > min_val) or (minp >= target_thr)
+            if (debug_verbose or (attempts2 % max(1, int(debug_log_every)) == 0)):
+                _trace({'event': 'final_repair_iter', 'attempts2': int(attempts2), 'span': int(r - l),
+                        'min_val': float(min_val), 'minp': float(minp), 'improved': bool(improved)})
+            if improved:
                 torsions = prop
                 bb_curr = bb_prop
                 min_val = minp
@@ -874,6 +1055,7 @@ class Conductor:
                         return bins[ords[:min(top, len(ords))]]
                     A = top_bins(bins_a, torsions[idx_a])
                     B = top_bins(bins_b, torsions[idx_b])
+                    cand_list = []
                     for a in A:
                         for b in B:
                             tmp = torsions.copy()
@@ -883,6 +1065,22 @@ class Conductor:
                             sphi2, spsi2 = snap_to_scale(modes[idx_b], float(b[0]), float(b[1]))
                             tmp[idx_b, 0] = sphi2
                             tmp[idx_b, 1] = spsi2
+                            cand_list.append(tmp)
+                    if int(num_workers) > 1 and cand_list:
+                        batches = [cand_list[i:i+int(eval_batch)] for i in range(0, len(cand_list), int(eval_batch))]
+                        with ProcessPoolExecutor(max_workers=int(num_workers)) as ex:
+                            results = list(ex.map(_min_caca_for_torsions_batch, [(sequence, batch) for batch in batches]))
+                        offset = 0
+                        best_idx = -1
+                        for bidx, (val, rel_idx) in enumerate(results):
+                            if rel_idx >= 0 and val > best_local:
+                                best_local = val
+                                best_idx = offset + rel_idx
+                            offset += len(batches[bidx])
+                        if best_idx >= 0:
+                            cand_prop = cand_list[best_idx]
+                    else:
+                        for tmp in cand_list:
                             bb_tmp = self.build_backbone_from_torsions(tmp, sequence)
                             CAx = bb_tmp[:, 1, :]
                             ca_dx = np.linalg.norm(CAx[1:] - CAx[:-1], axis=1)
@@ -901,6 +1099,65 @@ class Conductor:
                 if attempts2 % max(1, int(final_window_increment)) == 0 and local_window2 < 4:
                     local_window2 += 1
 
+        # Critical override: greedily maximize global min CA-CA regardless of other energies
+        it_co = 0
+        if int(critical_override_iters) > 0:
+            while min_val < target_thr and it_co < int(critical_override_iters):
+                if wall_timeout_sec is not None and (time.time() - t0) > float(wall_timeout_sec):
+                    _trace({'event': 'timeout_abort', 'phase': 'critical_override', 'iter': int(it_co)})
+                    break
+                # Recompute tightest pair
+                CA = bb_curr[:, 1, :]
+                ca_dists = np.linalg.norm(CA[1:] - CA[:-1], axis=1)
+                if ca_dists.size == 0:
+                    break
+                min_idx = int(np.argmin(ca_dists) + 1)
+                min_val = float(ca_dists[min_idx - 1])
+                k = min_idx
+                idx_a = k - 1
+                idx_b = k
+                bins_union = np.vstack([SCALE_TABLE['helix'], SCALE_TABLE['sheet'], SCALE_TABLE['loop']])
+                def top_bins_union(curr, top=spacing_top_bins):
+                    d = np.linalg.norm(bins_union - curr, axis=1)
+                    ords = np.argsort(d)
+                    return bins_union[ords[:min(top, len(ords))]]
+                A = top_bins_union(torsions[idx_a]) if 0 <= idx_a < L else np.empty((0,2), dtype=np.float32)
+                B = top_bins_union(torsions[idx_b]) if 0 <= idx_b < L else np.empty((0,2), dtype=np.float32)
+                best_local = min_val
+                best_tmp = None
+                for a in A:
+                    for b in B:
+                        tmp = torsions.copy()
+                        tmp[idx_a, 0] = float(a[0]); tmp[idx_a, 1] = float(a[1])
+                        tmp[idx_b, 0] = float(b[0]); tmp[idx_b, 1] = float(b[1])
+                        bb_tmp = self.build_backbone_from_torsions(tmp, sequence)
+                        CAx = bb_tmp[:, 1, :]
+                        ca_dx = np.linalg.norm(CAx[1:] - CAx[:-1], axis=1)
+                        if ca_dx.size > 0:
+                            dmin = float(np.min(ca_dx))
+                            if dmin > best_local:
+                                best_local = dmin
+                                best_tmp = (tmp, bb_tmp)
+                _trace({'event': 'critical_override_iter', 'iter': int(it_co), 'min_val': float(min_val), 'best_local': float(best_local)})
+                if best_tmp is not None:
+                    torsions, bb_curr = best_tmp
+                    min_val = best_local
+                    if min_val >= target_thr:
+                        break
+                else:
+                    # No improvement found; terminate early
+                    break
+                it_co += 1
+
+        # Final event
+        try:
+            final_qc = self.quality_check(bb_curr, np.array([t[0] for t in torsions]), np.array([t[1] for t in torsions]), modes)
+            _trace({'event': 'end', 'final_qc': final_qc['summary']})
+        except Exception:
+            pass
+        if trace_f is not None:
+            try: trace_f.close()
+            except Exception: pass
         return torsions.tolist(), bb_curr
 
     # -------------------------
