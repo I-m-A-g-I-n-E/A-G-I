@@ -137,8 +137,9 @@ class Fractal48Layer(nn.Module):
         x_odd = x[:, 1:paired:2].clone()
         
         if self.use_learnable_lifting:
-            scale = torch.clamp(self.lift_scale, 0.5, 2.0)
-            shift_val = torch.clamp(self.lift_shift, -1, 1)
+            # Ensure parameters live on the same device as input
+            scale = torch.clamp(self.lift_scale.to(x.device), 0.5, 2.0)
+            shift_val = torch.clamp(self.lift_shift.to(x.device), -1, 1)
             
             # Reverse lifting steps
             x_even = x_even - torch.round(x_odd * scale) / (2 ** shift)
