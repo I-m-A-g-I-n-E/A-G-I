@@ -121,6 +121,10 @@ def _load_sequence_arg(seq_arg: Optional[str], seq_file: Optional[str], fallback
 @click.option('--wc-diss', type=float, default=2.5, show_default=True)
 @click.option('--repeat-windows', type=int, default=1, show_default=True)
 @click.option('--reference-pdb', type=str, default=None, help='Path to reference PDB for TM-score/RMSD validation')
+# Live audio monitor (optional)
+@click.option('--enable-audio-monitor', is_flag=True, default=False, show_default=True, help='Play live audio pings during refinement (non-blocking)')
+@click.option('--audio-stride', type=int, default=20, show_default=True, help='Emit an audio frame every N refinement iterations')
+@click.option('--audio-sample-rate', type=int, default=12000, show_default=True, help='Sample rate for live audio (Hz)')
 def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], sequence_file: Optional[str],
               refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
               w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
@@ -130,7 +134,8 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
               final_attempts: int, spacing_cross_mode: bool, critical_override_iters: int,
               num_workers: int, eval_batch: int,
               sonify_3ch: bool, audio_wav: Optional[str], bpm: float, stride_ticks: int, amplify: float,
-              wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int, reference_pdb: Optional[str]):
+              wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int, reference_pdb: Optional[str],
+              enable_audio_monitor: bool, audio_stride: int, audio_sample_rate: int):
     """Generate PDB from composition mean; optional refine and 3-channel sonification."""
     mean, certainty = load_ensemble(input_prefix)
     if mean.ndim == 1:
@@ -193,6 +198,7 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
             final_attempts=int(final_attempts), spacing_cross_mode=bool(spacing_cross_mode),
             critical_override_iters=int(critical_override_iters),
             num_workers=int(num_workers), eval_batch=int(eval_batch),
+            enable_audio_monitor=bool(enable_audio_monitor), audio_stride=int(audio_stride), audio_sample_rate=int(audio_sample_rate),
         )
         if debug_trace_path:
             click.echo(f"   - Trace: {debug_trace_path}")
