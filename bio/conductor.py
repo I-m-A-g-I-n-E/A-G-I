@@ -472,7 +472,15 @@ class Conductor:
 
     def refine_torsions(self, phi_psi_initial: list, modes: list[str], sequence: str,
                         max_iters: int = 150, step_deg: float = 2.0, seed: int | None = None,
-                        weights: dict | None = None, patience: int = 50) -> tuple[list, np.ndarray]:
+                        weights: dict | None = None, patience: int = 50,
+                        *,
+                        phaseA_frac: float = 0.4,
+                        step_deg_clash: float | None = None,
+                        clash_weight: float | None = None,
+                        steric_only_phaseA: bool = True,
+                        final_attempts: int = 2000,
+                        final_step: float = 5.0,
+                        final_window_increment: int = 25) -> tuple[list, np.ndarray]:
         """
         Refines a set of torsion angles to minimize dissonance while staying on-key.
         Returns (refined_torsions_list, refined_backbone)
@@ -492,17 +500,8 @@ class Conductor:
 
         iters_since_improvement = 0
 
-        # Advanced refinement config defaults (kept local to avoid signature bloat)
-        phaseA_frac = 0.4
-        step_deg_clash = None
-        clash_weight = None
-        steric_only_phaseA = True
-        final_attempts = 2000
-        final_step = 5.0
-        final_window_increment = 25
-
         # Phase A: clash-focused
-        phaseA_iters = max(1, int(max_iters * 0.4))
+        phaseA_iters = max(1, int(max_iters * float(phaseA_frac)))
         wA = dict(weights)
         wA['clash'] = float(clash_weight) if clash_weight is not None else max(wA.get('clash', 1.5), 10.0)
         stepA = float(step_deg_clash) if step_deg_clash is not None else max(float(step_deg), 3.5)
