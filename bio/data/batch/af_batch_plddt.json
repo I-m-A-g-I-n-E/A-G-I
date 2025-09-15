@@ -32,6 +32,19 @@
         "window_size": 48,
         "stride": 16,
         "educated": 1,
+        "metrics": {
+          "n_windows": 6,
+          "window_size": 48,
+          "stride": 16,
+          "mode": "per_window",
+          "pearson_mean": 0.9994818468888601,
+          "spearman_mean": 0.999999980131785,
+          "auc_mean": NaN,
+          "acc_mean": 0.9965277777777777,
+          "precision_mean": 0.9965277777777777,
+          "recall_mean": 1.0,
+          "f1_mean": 0.9982456140350878
+        },
         "entry": "af_pdbs/AF-P69905-F1-model_v4.pdb",
         "chain": "",
         "source_is_path": true
@@ -45,6 +58,19 @@
         "window_size": 48,
         "stride": 16,
         "educated": 1,
+        "metrics": {
+          "n_windows": 7,
+          "window_size": 48,
+          "stride": 16,
+          "mode": "per_window",
+          "pearson_mean": 0.9999122449329921,
+          "spearman_mean": 0.9999999829701015,
+          "auc_mean": NaN,
+          "acc_mean": 0.9970238095238094,
+          "precision_mean": 0.9970238095238094,
+          "recall_mean": 1.0,
+          "f1_mean": 0.9984962406015038
+        },
         "entry": "af_pdbs/AF-P68871-F1-model_v4.pdb",
         "chain": "",
         "source_is_path": true
@@ -58,6 +84,19 @@
         "window_size": 48,
         "stride": 16,
         "educated": 1,
+        "metrics": {
+          "n_windows": 46,
+          "window_size": 48,
+          "stride": 16,
+          "mode": "per_window",
+          "pearson_mean": 0.9999957084655762,
+          "spearman_mean": 0.9999999818594559,
+          "auc_mean": NaN,
+          "acc_mean": 0.9225543478260873,
+          "precision_mean": 0.6847806070849589,
+          "recall_mean": 0.8043478260869565,
+          "f1_mean": 0.725737175518857
+        },
         "entry": "af_pdbs/AF-P05067-F1-model_v4.pdb",
         "chain": "",
         "source_is_path": true

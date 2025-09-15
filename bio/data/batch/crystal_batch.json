@@ -32,6 +32,19 @@
         "window_size": 48,
         "stride": 16,
         "educated": 1,
+        "metrics": {
+          "n_windows": 1,
+          "window_size": 48,
+          "stride": 16,
+          "mode": "per_window",
+          "pearson_mean": 0.9999998807907104,
+          "spearman_mean": 1.0,
+          "auc_mean": 1.0,
+          "acc_mean": 0.7708333333333334,
+          "precision_mean": 0.717948717948718,
+          "recall_mean": 1.0,
+          "f1_mean": 0.835820895522388
+        },
         "entry": "1CRN",
         "chain": "A",
         "source_is_path": false
@@ -45,6 +58,19 @@
         "window_size": 48,
         "stride": 16,
         "educated": 1,
+        "metrics": {
+          "n_windows": 2,
+          "window_size": 48,
+          "stride": 16,
+          "mode": "per_window",
+          "pearson_mean": 0.9999998509883881,
+          "spearman_mean": 1.0,
+          "auc_mean": 1.0,
+          "acc_mean": 0.7604166666666666,
+          "precision_mean": 0.6525735294117647,
+          "recall_mean": 1.0,
+          "f1_mean": 0.7892255892255893
+        },
         "entry": "1UBQ",
         "chain": "A",
         "source_is_path": false
@@ -58,6 +84,19 @@
         "window_size": 48,
         "stride": 16,
         "educated": 1,
+        "metrics": {
+          "n_windows": 6,
+          "window_size": 48,
+          "stride": 16,
+          "mode": "per_window",
+          "pearson_mean": 0.9999999304612478,
+          "spearman_mean": 1.0,
+          "auc_mean": 1.0,
+          "acc_mean": 0.7083333333333334,
+          "precision_mean": 0.5873028174103444,
+          "recall_mean": 1.0,
+          "f1_mean": 0.7384505190901404
+        },
         "entry": "1AKI",
         "chain": "A",
         "source_is_path": false

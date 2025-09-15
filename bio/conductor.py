@@ -140,6 +140,8 @@ def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[fl
                         torch.stack([N_coords[i], CA_coords[i], C_coords[i]], dim=0)
                         for i in range(L)
                     ], dim=0)
+                    if os.getenv('AGI_DEBUG_ACCEL') == '1':
+                        print(f"[accel] build_backbone_from_torsions via torch on {dev.type} (L={L})")
                     return backbone_t.detach().to('cpu').numpy()
             except Exception:
                 # Fallback to NumPy baseline below
@@ -499,6 +501,9 @@ class Conductor:
                     ii, jj = torch.meshgrid(idx, idx, indexing='ij')
                     mask_near = (torch.abs(ii - jj) <= int(skip_near))
                     D = D.masked_fill(mask_near, float('inf'))
+                    # Optional debug confirmation
+                    if os.getenv('AGI_DEBUG_ACCEL') == '1':
+                        print(f"[accel] _min_inter_residue_distances via torch on {dev.type} (L={L})")
                     return D.detach().to('cpu').numpy()
             except Exception:
                 # Fallback to numpy path on any error
