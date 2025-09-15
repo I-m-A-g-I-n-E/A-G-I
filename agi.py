@@ -91,6 +91,9 @@ def _load_sequence_arg(seq_arg: Optional[str], seq_file: Optional[str], fallback
 @click.option('--w-ca', type=float, default=1.0, show_default=True)
 @click.option('--w-smooth', type=float, default=0.2, show_default=True)
 @click.option('--w-snap', type=float, default=0.5, show_default=True)
+@click.option('--w-neighbor-ca', type=float, default=0.0, show_default=True)
+@click.option('--w-nonadj-ca', type=float, default=0.0, show_default=True)
+@click.option('--w-dihedral', type=float, default=0.0, show_default=True)
 # Sonification
 @click.option('--sonify-3ch', is_flag=True, default=False, show_default=True)
 @click.option('--audio-wav', type=str, default=None, help='Output path for the 3-channel WAV file.')
@@ -104,6 +107,7 @@ def _load_sequence_arg(seq_arg: Optional[str], seq_file: Optional[str], fallback
 def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], sequence_file: Optional[str],
               refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
               w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
+              w_neighbor_ca: float, w_nonadj_ca: float, w_dihedral: float,
               sonify_3ch: bool, audio_wav: Optional[str], bpm: float, stride_ticks: int, amplify: float,
               wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
     """Generate PDB from composition mean; optional refine and 3-channel sonification."""
@@ -129,8 +133,17 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
 
     # QC
     qc = pipeline.quality_report(conductor, backbone, phi, psi, modes)
-    qc_path = output_pdb.rsplit('.', 1)[0] + '_qc.json'
+    # Record weights provenance (initial)
+    qc.setdefault('summary', {})['weights'] = {
+        'clash': 1.5, 'ca': 1.0, 'smooth': 0.2, 'snap': 0.5,
+        'neighbor_ca': 0.0, 'nonadj_ca': 0.0, 'dihedral': 0.0,
+    }
+    base_noext = output_pdb.rsplit('.', 1)[0]
+    qc_path = base_noext + '_qc.json'
     save_json(qc, qc_path)
+    # Also store initial-labeled copy for provenance
+    init_qc_path = base_noext + '_initial_qc.json'
+    save_json(qc, init_qc_path)
 
     # Dissonance (initial)
     torsions_init = np.stack([phi, psi], axis=1)
@@ -140,7 +153,15 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
 
     # Optional refine
     if refine:
-        weights = {'clash': w_clash, 'ca': w_ca, 'smooth': w_smooth, 'snap': w_snap}
+        weights = {
+            'clash': w_clash,
+            'ca': w_ca,
+            'smooth': w_smooth,
+            'snap': w_snap,
+            'neighbor_ca': w_neighbor_ca,
+            'nonadj_ca': w_nonadj_ca,
+            'dihedral': w_dihedral,
+        }
         refined_torsions, refined_backbone = pipeline.refine_backbone(
             conductor, backbone, phi, psi, modes, seq,
             max_iters=int(refine_iters), step_deg=float(refine_step), seed=refine_seed, weights=weights,
@@ -151,8 +172,12 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
         rphi = np.array([t[0] for t in refined_torsions], dtype=np.float32)
         rpsi = np.array([t[1] for t in refined_torsions], dtype=np.float32)
         qc_ref = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
-        qc_ref_path = output_pdb.rsplit('.', 1)[0] + '_refined_qc.json'
+        # Record weights provenance (refined)
+        qc_ref.setdefault('summary', {})['weights'] = weights
+        qc_ref_path = base_noext + '_refined_qc.json'
         save_json(qc_ref, qc_ref_path)
+        # Treat refined QC as the definitive final QC report as well
+        save_json(qc_ref, qc_path)
         # Dissonance refined
         torsions_ref = np.stack([rphi, rpsi], axis=1)
         diss_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
@@ -241,7 +266,9 @@ def sonify(input_prefix: str, output_wav: str, sequence: Optional[str], bpm: flo
 @click.option('--repeat-windows', type=int, default=1, show_default=True)
 def play(sequence: str, samples: int, variability: float, seed: Optional[int], window_jitter: bool,
          save_prefix: str, output_pdb: str, refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
-         w_clash: float, w_ca: float, w_smooth: float, w_snap: float, sonify_3ch: bool, audio_wav: Optional[str], bpm: float,
+         w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
+         w_neighbor_ca: float, w_nonadj_ca: float, w_dihedral: float,
+         sonify_3ch: bool, audio_wav: Optional[str], bpm: float,
          stride_ticks: int, amplify: float, wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
     """One-shot pipeline: compose → structure (optional refine) → optional 3ch sonify."""
     # Compose and save ensemble
@@ -284,7 +311,15 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
 
     # Optional refine
     if refine:
-        weights = {'clash': w_clash, 'ca': w_ca, 'smooth': w_smooth, 'snap': w_snap}
+        weights = {
+            'clash': w_clash,
+            'ca': w_ca,
+            'smooth': w_smooth,
+            'snap': w_snap,
+            'neighbor_ca': w_neighbor_ca,
+            'nonadj_ca': w_nonadj_ca,
+            'dihedral': w_dihedral,
+        }
         refined_torsions, refined_backbone = pipeline.refine_backbone(
             conductor, backbone, phi, psi, modes, sequence.strip().upper(),
             max_iters=int(refine_iters), step_deg=float(refine_step), seed=refine_seed, weights=weights,
@@ -294,8 +329,10 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
         rphi = np.array([t[0] for t in refined_torsions], dtype=np.float32)
         rpsi = np.array([t[1] for t in refined_torsions], dtype=np.float32)
         qc_ref = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        qc_ref.setdefault('summary', {})['weights'] = weights
         qc_ref_path = output_pdb.rsplit('.', 1)[0] + '_refined_qc.json'
         save_json(qc_ref, qc_ref_path)
+        save_json(qc_ref, qc_path)
         # Refined dissonance
         torsions_ref = np.stack([rphi, rpsi], axis=1)
         diss_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
