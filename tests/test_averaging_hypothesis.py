@@ -4,7 +4,7 @@ Quick test to compare averaging vs best-of-N selection.
 """
 import sys
 import numpy as np
-import torch
+import torch    
 from bio import pipeline
 
 def test_averaging_vs_best_of_n(sequence, seed=21, samples=8):
@@ -64,7 +64,7 @@ def test_averaging_vs_best_of_n(sequence, seed=21, samples=8):
     torch.save(best_certainty, "outputs/test_best_certainty.pt")
     
     print(f"\nSaved outputs/test_averaged_* and outputs/test_best_* for comparison")
-    return averaged_comp, best_comp, averaged_certainty, best_certainty
+    # No return values from tests; rely on printed summaries and saved artifacts
 
 if __name__ == "__main__":
     sequence = "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHGKKVADALTNAVAHVDDMPNALSALSDLHAHKLRVDPVNFKLLSHCLLVTLAAHLPAEFTPAVHASLDKFLASVSTVLTSKYR"
