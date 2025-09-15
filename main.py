@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """
+
+NOTE from PT: This should ultimately be refactored to accomodate any base division of 48
+Naming convention should reflect the emergent fractal geometry
+48 maybe a 'special' number from our perspective, but it's likely the first in a series of fractal manifolds; could be synonymous with a 'universe'
+
 Fractal Transfer Protocol: 48-basis reversible coordinate system
 No decimation, no floating points—only exact lattice homeomorphisms
 """
