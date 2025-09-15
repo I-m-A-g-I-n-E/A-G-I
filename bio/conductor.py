@@ -549,6 +549,87 @@ class Conductor:
 
         iters_since_improvement = 0
 
+        # Stage 1: Spacing Pass (Physical Integrity First)
+        # Push all adjacent CA-CA distances above neighbor_threshold by discrete note jumps
+        neighbor_threshold = 3.2
+        max_spacing_attempts = 300
+        spacing_attempts = 0
+        bins_tried = 0
+        from .scale_and_meter import SCALE_TABLE
+
+        def adjacent_pairs_below_thr(backbone_arr: np.ndarray, thr: float) -> list[tuple[int, int]]:
+            CA_loc = backbone_arr[:, 1, :]
+            d = np.linalg.norm(CA_loc[1:] - CA_loc[:-1], axis=1)
+            pairs = []
+            for k in range(1, len(d) + 1):
+                if d[k - 1] < thr:
+                    pairs.append((k - 1, k))
+            return pairs
+
+        def global_min_caca(backbone_arr: np.ndarray) -> float:
+            CA_loc = backbone_arr[:, 1, :]
+            if CA_loc.shape[0] < 2:
+                return float('inf')
+            d = np.linalg.norm(CA_loc[1:] - CA_loc[:-1], axis=1)
+            return float(np.min(d)) if d.size > 0 else float('inf')
+
+        pairs = adjacent_pairs_below_thr(bb_curr, neighbor_threshold)
+        while pairs and spacing_attempts < max_spacing_attempts:
+            spacing_attempts += 1
+            improved = False
+            # Work each problematic adjacent pair
+            for (ia, ib) in pairs:
+                # Enumerate up to K nearest bins for each residue in the pair
+                def top_bins(bins: np.ndarray, curr: np.ndarray, top: int = 4) -> np.ndarray:
+                    d = np.linalg.norm(bins - curr, axis=1)
+                    ords = np.argsort(d)
+                    return bins[ords[:min(top, len(ords))]]
+
+                bins_a = SCALE_TABLE[modes[ia]]
+                bins_b = SCALE_TABLE[modes[ib]]
+                A = top_bins(bins_a, torsions[ia])
+                B = top_bins(bins_b, torsions[ib])
+
+                best_local_min = global_min_caca(bb_curr)
+                best_prop = None
+                for a in A:
+                    for b in B:
+                        bins_tried += 1
+                        tmp = torsions.copy()
+                        sphi_a, spsi_a = snap_to_scale(modes[ia], float(a[0]), float(a[1]))
+                        tmp[ia, 0] = sphi_a
+                        tmp[ia, 1] = spsi_a
+                        sphi_b, spsi_b = snap_to_scale(modes[ib], float(b[0]), float(b[1]))
+                        tmp[ib, 0] = sphi_b
+                        tmp[ib, 1] = spsi_b
+                        bb_tmp = self.build_backbone_from_torsions(tmp, sequence)
+                        mmin = global_min_caca(bb_tmp)
+                        if mmin > best_local_min:
+                            best_local_min = mmin
+                            best_prop = (tmp, bb_tmp)
+
+                # Accept immediately if we found a combination that increases global min CA-CA
+                if best_prop is not None:
+                    torsions, bb_curr = best_prop
+                    best_min_caca = best_local_min
+                    improved = True
+                    # Reset Phase trackers as we changed state
+                    iters_since_improvement = 0
+            if not improved:
+                break
+            # Recompute list of problematic pairs
+            pairs = adjacent_pairs_below_thr(bb_curr, neighbor_threshold)
+
+        # record spacing stats on the instance for external reporting
+        try:
+            self.last_refine_stats = {
+                'spacing_attempts': int(spacing_attempts),
+                'bins_tried': int(bins_tried),
+                'final_min_ca_ca_after_spacing': float(global_min_caca(bb_curr)),
+            }
+        except Exception:
+            self.last_refine_stats = {'spacing_attempts': int(spacing_attempts), 'bins_tried': int(bins_tried)}
+
         # Precompute contiguous same-mode segments for meter-aware updates
         segments: list[tuple[int, int, str]] = []  # (start, end, mode) with end exclusive
         s = 0
