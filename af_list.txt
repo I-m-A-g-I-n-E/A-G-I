@@ -1,3 +1,0 @@
-af_pdbs/AF-P69905-F1-model_v4.pdb
-af_pdbs/AF-P68871-F1-model_v4.pdb
-af_pdbs/AF-P05067-F1-model_v4.pdb

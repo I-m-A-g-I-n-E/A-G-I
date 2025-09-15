@@ -107,9 +107,9 @@ class Fractal48Transfer:
     def _crt_reconstruct(self, r16: int, r3: int) -> int:
         """Chinese Remainder Theorem reconstruction"""
         # x ≡ r16 (mod 16) and x ≡ r3 (mod 3)
-        # Solution: x = r16 * 3 * 11 + r3 * 16 * 1 (mod 48)
-        # because 3 * 11 ≡ 1 (mod 16) and 16 * 1 ≡ 1 (mod 3)
-        return (r16 * 3 * 11 + r3 * 16) % 48
+        # Compute modular inverse instead of hardcoding 11 = inv(3 mod 16)
+        inv3_mod16 = pow(3, -1, 16)
+        return (r16 * 3 * inv3_mod16 + r3 * 16) % 48
     
     def _gcd(self, a: int, b: int) -> int:
         """Euclidean algorithm for GCD"""

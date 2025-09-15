@@ -50,6 +50,21 @@ class Turn:
         return float(base_complexity * chirality_cost)
 
 
+# --- Angles and distances with context ---
+@dataclass
+class Deg:
+    """Angle in degrees with a semantic reference label (e.g., "C-N-CA")."""
+    value: float
+    reference: str = ""
+
+
+@dataclass
+class Angstrom:
+    """Distance in Ångströms with a semantic reference label."""
+    value: float
+    reference: str = ""
+
+
 # --- The Computational Substrate ---
 @dataclass
 class Phase48:
@@ -109,8 +124,17 @@ class LoopNotes(Enum):
     RESOLUTION = 'loop_resolution'
 
 
+# Physical constants (contextualized)
+IDEAL_GEOMETRY = {
+    "CA-CA": Angstrom(3.8, "CA-CA_adjacent"),
+    "N-CA": Angstrom(1.45, "N-CA_bond"),
+    "CA-C": Angstrom(1.52, "CA-C_bond"),
+    "C-N": Angstrom(1.33, "C-N_peptide"),
+}
+
+
 # Refinement policy registry (versioned) for QC reports
 REFINEMENT_POLICY = {
-    'version': '1.0.0',
-    'clash_cutoff': type('P', (), {'value': 2.0})(),  # Å cutoff encapsulated with .value for ease of use
+    'version': 'SANE-v1.0',
+    'clash_cutoff': Angstrom(3.2, "CA-CA_nonadjacent_min"),
 }
