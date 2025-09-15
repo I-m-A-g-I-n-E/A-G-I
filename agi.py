@@ -172,6 +172,14 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
         rphi = np.array([t[0] for t in refined_torsions], dtype=np.float32)
         rpsi = np.array([t[1] for t in refined_torsions], dtype=np.float32)
         qc_ref = pipeline.quality_report(conductor, refined_backbone, rphi, rpsi, modes)
+        # Attach refine stats if available
+        try:
+            stats = getattr(conductor, 'last_refine_stats', None)
+            if stats is not None:
+                qc_ref.setdefault('summary', {})['refine_stats'] = stats
+                click.echo(f"   - Spacing pass: attempts={stats.get('spacing_attempts')}, bins_tried={stats.get('bins_tried')}, final_min_ca_ca={stats.get('final_min_ca_ca_after_spacing')}")
+        except Exception:
+            pass
         # Record weights provenance (refined)
         qc_ref.setdefault('summary', {})['weights'] = weights
         qc_ref_path = base_noext + '_refined_qc.json'
