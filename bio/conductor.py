@@ -13,6 +13,15 @@ except ImportError:  # allow running as a script: python bio/conductor.py
     from bio.key_estimator import estimate_key_and_modes
     from bio.scale_and_meter import snap_to_scale, enforce_meter
 
+# Chirality-aware notation
+try:
+    from agi.harmonia.notation import Handedness
+except Exception:
+    # Fallback placeholder to avoid hard failure if module not found
+    class Handedness:
+        RIGHT = type("H", (), {"name": "RIGHT"})()
+        LEFT = type("H", (), {"name": "LEFT"})()
+
 def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[float, int]:
     """Compute the best (max) min CA-CA distance among a batch of candidate torsions.
 
@@ -153,6 +162,12 @@ class Conductor:
 
         # 1. Determine Key and Modes
         global_kore, modes = estimate_key_and_modes(composition_vectors, sequence)
+
+        # Initialize default handedness map (all RIGHT by default)
+        try:
+            self.handedness = [Handedness.RIGHT] * num_residues
+        except Exception:
+            pass
 
         # 2. Generate Raw Torsion Angles from Music (key-aware)
         raw_torsions = [( -57.0, -47.0 )]  # placeholder for residue 0
@@ -453,6 +468,12 @@ class Conductor:
         else:
             orth_frac = 0.0
 
+        # Chirality export (best effort)
+        try:
+            chiral_map = [getattr(h, 'name', str(h)) for h in getattr(self, 'handedness', [Handedness.RIGHT] * L)]
+        except Exception:
+            chiral_map = ["RIGHT"] * L
+
         report = {
             "lengths": {
                 "N-CA": len_N_CA,
@@ -477,6 +498,7 @@ class Conductor:
                 "orthogonality_index": float(orth_frac),
             },
             "clashes": clashes,
+            "chirality_map": chiral_map,
         }
         return report
 
@@ -933,6 +955,42 @@ class Conductor:
                 if iters_since_improvement >= patience:
                     print(f"   - Rehearsal converged after {phaseA_iters + j + 1} iterations.")
                     break
+
+        # Chiral inversion attempt: consciously try LEFT-handed local inversion near tightest CA-CA pair
+        try:
+            CA_now = bb_curr[:, 1, :]
+            ca_d = np.linalg.norm(CA_now[1:] - CA_now[:-1], axis=1)
+            if ca_d.size > 0:
+                tight_k = int(np.argmin(ca_d) + 1)
+                local_span = 2
+                idxs = np.unique(list(range(max(0, tight_k - local_span), min(L, tight_k + local_span + 1))))
+                prop = torsions.copy()
+                for idx in idxs:
+                    # invert sign then resnap to scale (mirror path)
+                    inv = -prop[idx]
+                    sphi, spsi = snap_to_scale(modes[idx], float(inv[0]), float(inv[1]))
+                    prop[idx, 0] = sphi
+                    prop[idx, 1] = spsi
+                bb_prop = self.build_backbone_from_torsions(prop, sequence)
+                score_curr = self.calculate_dissonance(bb_curr, torsions, modes, weights)
+                score_prop = self.calculate_dissonance(bb_prop, prop, modes, weights)
+                qc_prop = self.quality_check(bb_prop, np.array([t[0] for t in prop]), np.array([t[1] for t in prop]), modes)
+                qc_curr = self.quality_check(bb_curr, np.array([t[0] for t in torsions]), np.array([t[1] for t in torsions]), modes)
+                reduce_clash = qc_prop['summary']['num_clashes'] < qc_curr['summary']['num_clashes']
+                increase_min = qc_prop['summary']['min_ca_ca'] > qc_curr['summary']['min_ca_ca']
+                if (score_prop < score_curr) or reduce_clash or increase_min:
+                    torsions = prop
+                    bb_curr = bb_prop
+                    # Update handedness map for these residues to LEFT
+                    try:
+                        if not hasattr(self, 'handedness') or len(self.handedness) != L:
+                            self.handedness = [Handedness.RIGHT] * L
+                        for idx in idxs:
+                            self.handedness[idx] = Handedness.LEFT
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
         # Final authoritative pass: targeted clash resolution
         # If clashes remain, aggressively fix them by local torsion tweaks
