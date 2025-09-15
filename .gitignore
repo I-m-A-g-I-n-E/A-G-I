@@ -93,3 +93,4 @@ af_pdbs/
 *.7z
 *.rar
 *.gz
+bio/data/batch/*
