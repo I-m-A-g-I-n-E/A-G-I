@@ -4,10 +4,11 @@ import time
 import json
 import os
 from concurrent.futures import ProcessPoolExecutor
+from bio.devices import get_device
 try:
     from .geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
     from .key_estimator import estimate_key_and_modes
-    from .scale_and_meter import snap_to_scale, enforce_meter
+    from bio.scale_and_meter import snap_to_scale, enforce_meter
 except ImportError:  # allow running as a script: python bio/conductor.py
     from bio.geometry import INTERVAL_TO_TORSION, IDEAL_GEOMETRY, place_next_atom
     from bio.key_estimator import estimate_key_and_modes
@@ -24,6 +25,12 @@ except Exception:
         LEFT = type("H", (), {"name": "LEFT"})()
     Movement = None
     Gesture = None
+try:
+    from agi.metro.sanity import audit_sanity
+    from agi.harmonia import notation
+except Exception:
+    audit_sanity = None
+    notation = None
 
 def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[float, int]:
     """Compute the best (max) min CA-CA distance among a batch of candidate torsions.
@@ -46,7 +53,7 @@ def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[fl
     best_val = float('-inf')
     best_idx = -1
     for idx, torsions in enumerate(batch):
-        # Seed first residue
+        # Seed first residue (NumPy baseline)
         N0 = np.array([0.0, 0.0, 0.0])
         CA0 = np.array([b_N_CA, 0.0, 0.0])
         theta = np.deg2rad(180.0 - ang_N_CA_C)
@@ -56,6 +63,87 @@ def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[fl
         C_coords = [C0]
         phi = torsions[:, 0]
         psi = torsions[:, 1]
+
+        # Optional accelerated path using torch (CUDA/MPS) with NeRF in torch
+        use_accel = False
+        try:
+            use_accel = bool(int(os.getenv('AGI_ACCEL_TORCH', '0')))
+        except Exception:
+            use_accel = False
+        if use_accel:
+            try:
+                import torch
+                dev = get_device()
+                if dev.type in ("cuda", "mps"):
+                    # Constants
+                    b_N_CA = float(IDEAL_GEOMETRY["N-CA"])  # ~1.45
+                    b_CA_C = float(IDEAL_GEOMETRY["CA-C"])  # ~1.52
+                    b_C_N = float(IDEAL_GEOMETRY["C-N"])    # ~1.33
+                    ang_CA_C_N = float(IDEAL_GEOMETRY["CA-C-N_angle"])  # deg
+                    ang_C_N_CA = float(IDEAL_GEOMETRY["C-N-CA_angle"])  # deg
+                    ang_N_CA_C = float(IDEAL_GEOMETRY["N-CA-C_angle"])  # deg
+                    omega = 180.0
+
+                    def deg2rad(x: float | torch.Tensor) -> torch.Tensor:
+                        return torch.as_tensor(x, dtype=torch.float32, device=dev) * (torch.pi / 180.0)
+
+                    # Seed first residue on device
+                    N0 = torch.tensor([0.0, 0.0, 0.0], dtype=torch.float32, device=dev)
+                    CA0 = torch.tensor([b_N_CA, 0.0, 0.0], dtype=torch.float32, device=dev)
+                    theta0 = deg2rad(180.0 - ang_N_CA_C)
+                    C0 = CA0 + torch.stack([
+                        torch.cos(theta0) * b_CA_C,
+                        torch.sin(theta0) * b_CA_C,
+                        torch.tensor(0.0, device=dev),
+                    ])
+
+                    N_coords = [N0]
+                    CA_coords = [CA0]
+                    C_coords = [C0]
+
+                    phi_t = torch.as_tensor(phi, dtype=torch.float32, device=dev)
+                    psi_t = torch.as_tensor(psi, dtype=torch.float32, device=dev)
+
+                    def place_next_atom_torch(p1: torch.Tensor, p2: torch.Tensor, p3: torch.Tensor,
+                                               *, length: float, angle_deg: float, torsion_deg: float) -> torch.Tensor:
+                        # Implements NeRF placement on device
+                        eps = 1e-8
+                        v1 = p1 - p2
+                        v2 = p2 - p3
+                        e1 = v2 / (torch.linalg.norm(v2) + eps)
+                        n = torch.cross(e1, v1)
+                        e2 = n / (torch.linalg.norm(n) + eps)
+                        e3 = torch.cross(e2, e1)
+                        R = torch.stack([e1, e2, e3], dim=1)  # 3x3 (columns)
+                        theta = deg2rad(angle_deg)
+                        tau = deg2rad(torsion_deg)
+                        r = torch.stack([
+                            -torch.cos(theta) * length,
+                            torch.sin(theta) * torch.cos(tau) * length,
+                            torch.sin(theta) * torch.sin(tau) * length,
+                        ])
+                        return p3 + R @ r
+
+                    # Build subsequent residues (sequential dependency)
+                    for i in range(1, L):
+                        Ni = place_next_atom_torch(N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1],
+                                                   length=b_C_N, angle_deg=ang_CA_C_N, torsion_deg=omega)
+                        CAi = place_next_atom_torch(CA_coords[i - 1], C_coords[i - 1], Ni,
+                                                    length=b_N_CA, angle_deg=ang_C_N_CA, torsion_deg=float(phi_t[i].item()))
+                        Ci = place_next_atom_torch(C_coords[i - 1], Ni, CAi,
+                                                   length=b_CA_C, angle_deg=ang_N_CA_C, torsion_deg=float(psi_t[i].item()))
+                        N_coords.append(Ni)
+                        CA_coords.append(CAi)
+                        C_coords.append(Ci)
+
+                    backbone_t = torch.stack([
+                        torch.stack([N_coords[i], CA_coords[i], C_coords[i]], dim=0)
+                        for i in range(L)
+                    ], dim=0)
+                    return backbone_t.detach().to('cpu').numpy()
+            except Exception:
+                # Fallback to NumPy baseline below
+                pass
         for i in range(1, L):
             Ni = place_next_atom(N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1], length=b_C_N, angle=ang_CA_C_N, torsion=omega)
             CAi = place_next_atom(CA_coords[i - 1], C_coords[i - 1], Ni, length=b_N_CA, angle=ang_C_N_CA, torsion=phi[i])
@@ -387,20 +475,43 @@ class Conductor:
 
         This is a vectorized implementation replacing nested loops.
         """
-        # backbone: (L, 3, 3)
+        # Optional acceleration via torch on non-CPU devices (controlled by env)
+        try:
+            use_accel = bool(int(os.getenv('AGI_ACCEL_TORCH', '0')))
+        except Exception:
+            use_accel = False
+
+        if use_accel:
+            try:
+                import torch  # already imported at top
+                from bio.devices import get_device
+                dev = get_device()
+                if dev.type in ("cuda", "mps"):
+                    P = torch.as_tensor(backbone, dtype=torch.float32, device=dev)  # (L,3,3)
+                    L = P.shape[0]
+                    A = P[:, None, :, None, :]  # (L,1,3,1,3)
+                    B = P[None, :, None, :, :]  # (1,L,1,3,3)
+                    diff = A - B
+                    dist = torch.linalg.vector_norm(diff, dim=-1)  # (L,L,3,3)
+                    D = dist.min(dim=2).values.min(dim=2).values  # (L,L)
+                    # Mask near neighbors
+                    idx = torch.arange(L, device=dev)
+                    ii, jj = torch.meshgrid(idx, idx, indexing='ij')
+                    mask_near = (torch.abs(ii - jj) <= int(skip_near))
+                    D = D.masked_fill(mask_near, float('inf'))
+                    return D.detach().to('cpu').numpy()
+            except Exception:
+                # Fallback to numpy path on any error
+                pass
+
+        # Numpy vectorized baseline (default path)
         L = backbone.shape[0]
-        # Positions shaped (L, A=3, C=3)
         P = backbone.astype(np.float32)
-        # Compute all atom-atom distances between residue pairs using broadcasting:
-        # A: (L,1,3,1,3), B: (1,L,1,3,3) -> diff: (L,L,3,3,3)
         A = P[:, None, :, None, :]
         B = P[None, :, None, :, :]
         diff = A - B  # (L, L, 3, 3, 3)
-        # Euclidean distances per atom pair across last axis -> (L, L, 3, 3)
-        dist = np.linalg.norm(diff, axis=-1)
-        # Min over atom pairs -> (L, L)
-        D = dist.min(axis=(2, 3))
-        # Mask near-sequence neighbors (|i-j| <= skip_near)
+        dist = np.linalg.norm(diff, axis=-1)  # (L, L, 3, 3)
+        D = dist.min(axis=(2, 3))  # (L, L)
         idx = np.arange(L)
         ii, jj = np.meshgrid(idx, idx, indexing='ij')
         mask_near = (np.abs(ii - jj) <= int(skip_near))
@@ -528,6 +639,33 @@ class Conductor:
             "clashes": clashes,
             "chirality_map": chiral_map,
             "gesture_map": gesture_map,
+        }
+        # Optional sanity audit and policy version (non-breaking addition)
+        try:
+            if audit_sanity is not None:
+                me = __file__
+                san1 = audit_sanity(me)
+                # Also audit notation if available
+                if notation is not None and getattr(notation, '__file__', None):
+                    san2 = audit_sanity(getattr(notation, '__file__'))
+                    anchor_ratio = float((san1.get('sanity_score', 1.0) + san2.get('sanity_score', 1.0)) / 2.0)
+                else:
+                    anchor_ratio = float(san1.get('sanity_score', 1.0))
+            else:
+                anchor_ratio = 1.0
+        except Exception:
+            anchor_ratio = 1.0
+
+        policy_version = None
+        try:
+            if notation is not None:
+                policy_version = str(notation.REFINEMENT_POLICY.get('version'))
+        except Exception:
+            policy_version = None
+
+        report["sanity"] = {
+            "anchor_ratio": anchor_ratio,
+            "policy_version": policy_version,
         }
         return report
 
