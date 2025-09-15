@@ -238,7 +238,8 @@ class Conductor:
         C_coords = [C0]
 
         for i in range(1, L):
-            # Canonical sequential NeRF
+            # Canonical sequential NeRF (original mapping):
+            # N(i): torsion omega, CA(i): torsion phi(i), C(i): torsion psi(i)
             Ni = place_next_atom(N_coords[i - 1], CA_coords[i - 1], C_coords[i - 1],
                                  length=b_C_N, angle=ang_CA_C_N, torsion=omega)
             CAi = place_next_atom(CA_coords[i - 1], C_coords[i - 1], Ni,
@@ -383,9 +384,11 @@ class Conductor:
         # Simple clash detection: vectorized via inter-residue min distances
         clash_threshold = 2.0  # Å
         Dmin = self._min_inter_residue_distances(backbone, skip_near=2)  # allow i+3 and beyond
-        # Find indices where clash occurs
-        ii, jj = np.where(np.triu((Dmin < clash_threshold), k=1))
-        # Construct clashes list up to 50 entries
+        # Compute total number of clashes (not truncated)
+        clash_mask = np.triu((Dmin < clash_threshold), k=1)
+        total_clashes = int(np.sum(clash_mask))
+        # Find indices for detailed listing and truncate to 50 entries
+        ii, jj = np.where(clash_mask)
         clashes = [(int(i), int(j), float(Dmin[i, j])) for i, j in zip(ii, jj)][:50]
         # Orthogonality index: fraction of non-neighbor residue pairs whose min atom-atom distance
         # exceeds a safe separation threshold (use the same repulsive threshold as in dissonance, 3.2 Å)
@@ -415,7 +418,7 @@ class Conductor:
             "summary": {
                 "out_of_range_lengths": int(out_len),
                 "out_of_range_angles": int(out_ang),
-                "num_clashes": int(len(clashes)),
+                "num_clashes": int(total_clashes),
                 "min_ca_ca": float(min(ca_ca) if ca_ca else 0.0),
                 "max_ca_ca": float(max(ca_ca) if ca_ca else 0.0),
                 "orthogonality_index": float(orth_frac),
@@ -434,11 +437,14 @@ class Conductor:
         CA = backbone[:, 1, :]
         C = backbone[:, 2, :]
 
-        # Physical: CA-CA deviation from 3.8 Å
+        # Physical: CA-CA deviation from 3.8 Å (legacy term)
         ca_ca = np.array([np.linalg.norm(CA[i] - CA[i-1]) for i in range(1, L)], dtype=np.float32)
         E_ca = float(np.mean((ca_ca - 3.8) ** 2)) if L > 1 else 0.0
 
-        # Physical: repulsive for non-adjacent atoms closer than 3.2 Å (vectorized)
+        # New: Neighbor CA-CA tether (explicit, identical target 3.8 Å)
+        E_neighbor_ca = float(np.mean((ca_ca - 3.8) ** 2)) if L > 1 else 0.0
+
+        # Physical: repulsive for non-adjacent atoms closer than 3.2 Å (vectorized) on min-atom distances
         thr = 3.2
         Dmin = self._min_inter_residue_distances(backbone, skip_near=2)
         # Only distances below threshold contribute
@@ -448,6 +454,29 @@ class Conductor:
         rep = float(contrib.sum())
         E_clash = rep / max(1, L)
 
+        # New: Non-adjacent CA-CA repulsion using softplus((r_cut - d)^2), averaged over number of clashes
+        if L > 2:
+            # Pairwise CA-CA distances for |i-j| > 1
+            CAi = CA[:, None, :]  # (L,1,3)
+            CAj = CA[None, :, :]  # (1,L,3)
+            dCA = np.linalg.norm(CAi - CAj, axis=-1)  # (L,L)
+            idx = np.arange(L)
+            ii, jj = np.meshgrid(idx, idx, indexing='ij')
+            nonadj = np.abs(ii - jj) > 1
+            valid = nonadj
+            dCA_valid = dCA[valid]
+            clashes_mask = dCA_valid < thr
+            d_clash = dCA_valid[clashes_mask]
+            if d_clash.size > 0:
+                x = (thr - d_clash) ** 2
+                # softplus(x) = log(1 + exp(x))
+                soft = np.log1p(np.exp(x))
+                E_nonadj_ca = float(np.mean(soft))
+            else:
+                E_nonadj_ca = 0.0
+        else:
+            E_nonadj_ca = 0.0
+
         # Harmony: smoothness (finite difference of torsions)
         t = np.asarray(torsions, dtype=np.float32)
         if t.shape[0] > 1:
@@ -455,6 +484,18 @@ class Conductor:
             E_smooth = float(np.mean(dt ** 2))
         else:
             E_smooth = 0.0
+
+        # New: Dihedral smoothness with proper angle wrapping to [-180, 180]
+        def wrap180(a: np.ndarray) -> np.ndarray:
+            return ((a + 180.0) % 360.0) - 180.0
+        if t.shape[0] > 1:
+            phi = wrap180(t[:, 0])
+            psi = wrap180(t[:, 1])
+            dphi = wrap180(phi[1:] - phi[:-1])
+            dpsi = wrap180(psi[1:] - psi[:-1])
+            E_dihedral = float(np.mean(np.concatenate([dphi**2, dpsi**2], axis=0)))
+        else:
+            E_dihedral = 0.0
 
         # Harmony: snap distance to nearest bin per mode
         from .scale_and_meter import SCALE_TABLE
@@ -466,8 +507,16 @@ class Conductor:
             snap_errs.append(d)
         E_snap = float(np.mean(np.square(snap_errs))) if snap_errs else 0.0
 
-        w = weights
-        total = (w['ca'] * E_ca + w['clash'] * E_clash + w['smooth'] * E_smooth + w['snap'] * E_snap)
+        w = weights or {}
+        total = (
+            w.get('ca', 0.0) * E_ca +
+            w.get('clash', 0.0) * E_clash +
+            w.get('smooth', 0.0) * E_smooth +
+            w.get('snap', 0.0) * E_snap +
+            w.get('neighbor_ca', 0.0) * E_neighbor_ca +
+            w.get('nonadj_ca', 0.0) * E_nonadj_ca +
+            w.get('dihedral', 0.0) * E_dihedral
+        )
         return float(total)
 
     def refine_torsions(self, phi_psi_initial: list, modes: list[str], sequence: str,
@@ -500,6 +549,17 @@ class Conductor:
 
         iters_since_improvement = 0
 
+        # Precompute contiguous same-mode segments for meter-aware updates
+        segments: list[tuple[int, int, str]] = []  # (start, end, mode) with end exclusive
+        s = 0
+        while s < L:
+            m = modes[s]
+            e = s
+            while e < L and modes[e] == m:
+                e += 1
+            segments.append((s, e, m))
+            s = e
+
         # Phase A: clash-focused
         phaseA_iters = max(1, int(max_iters * float(phaseA_frac)))
         wA = dict(weights)
@@ -512,13 +572,29 @@ class Conductor:
             progress = i / max(1, phaseA_iters)
             current_step = stepA * (1.0 - 0.5 * progress)  # gentler anneal in clash phase
 
-            k = max(1, L // 3)
-            idxs = rng.choice(L, size=k, replace=False)
+            # Meter-aware proposal: select one contiguous same-mode segment
+            seg_idx = int(rng.integers(0, len(segments)))
+            seg_start, seg_end, seg_mode = segments[seg_idx]
+            span = seg_end - seg_start
+            if span <= 0:
+                continue
             prop = torsions.copy()
-            prop[idxs] += rng.uniform(-current_step, current_step, size=(k, 2)).astype(np.float32)
-            for idx in idxs:
-                phi, psi = prop[idx]
-                sphi, spsi = snap_to_scale(modes[idx], float(phi), float(psi))
+            # Note-jump proposal: choose an alternate allowed bin per residue, then snap
+            from .scale_and_meter import SCALE_TABLE
+            for idx in range(seg_start, seg_end):
+                mode_i = modes[idx]
+                bins = SCALE_TABLE[mode_i]
+                curr = torsions[idx]
+                # Distance of current torsion to each allowed bin
+                dists = np.linalg.norm(bins - curr, axis=1)
+                order = np.argsort(dists)
+                # Prefer the second-best allowed bin if available; otherwise keep best
+                cand_idx = int(order[1]) if order.shape[0] > 1 else int(order[0])
+                cand = bins[cand_idx].astype(np.float32)
+                # Small jitter to encourage escaping plateaus
+                jitter = rng.uniform(-current_step, current_step, size=(2,)).astype(np.float32)
+                trial = cand + jitter
+                sphi, spsi = snap_to_scale(mode_i, float(trial[0]), float(trial[1]))
                 prop[idx, 0] = sphi
                 prop[idx, 1] = spsi
 
@@ -548,13 +624,26 @@ class Conductor:
                 progress = j / max(1, remain)
                 current_step = float(step_deg) * (1.0 - progress)
 
-                k = max(1, L // 5)
-                idxs = rng.choice(L, size=k, replace=False)
+                # Meter-aware proposal: select one contiguous same-mode segment
+                seg_idx = int(rng.integers(0, len(segments)))
+                seg_start, seg_end, seg_mode = segments[seg_idx]
+                span = seg_end - seg_start
+                if span <= 0:
+                    continue
                 prop = torsions.copy()
-                prop[idxs] += rng.uniform(-current_step, current_step, size=(k, 2)).astype(np.float32)
-                for idx in idxs:
-                    phi, psi = prop[idx]
-                    sphi, spsi = snap_to_scale(modes[idx], float(phi), float(psi))
+                # Note-jump proposal: choose alternate allowed bins in this segment
+                from .scale_and_meter import SCALE_TABLE
+                for idx in range(seg_start, seg_end):
+                    mode_i = modes[idx]
+                    bins = SCALE_TABLE[mode_i]
+                    curr = torsions[idx]
+                    dists = np.linalg.norm(bins - curr, axis=1)
+                    order = np.argsort(dists)
+                    cand_idx = int(order[1]) if order.shape[0] > 1 else int(order[0])
+                    cand = bins[cand_idx].astype(np.float32)
+                    jitter = rng.uniform(-current_step, current_step, size=(2,)).astype(np.float32)
+                    trial = cand + jitter
+                    sphi, spsi = snap_to_scale(mode_i, float(trial[0]), float(trial[1]))
                     prop[idx, 0] = sphi
                     prop[idx, 1] = spsi
 
@@ -637,6 +726,100 @@ class Conductor:
                 # small adaptive change of window/step if stuck
                 if attempts % max(1, int(final_window_increment)) == 0 and local_window < 4:
                     local_window += 1
+
+        # Dedicated neighbor CA-CA repair pass: push min CA-CA above 3.2 Å
+        try:
+            CA = bb_curr[:, 1, :]
+            ca_dists = np.linalg.norm(CA[1:] - CA[:-1], axis=1)
+            min_idx = int(np.argmin(ca_dists) + 1)
+            min_val = float(ca_dists[min_idx - 1]) if ca_dists.size > 0 else float('inf')
+        except Exception:
+            min_idx, min_val = 1, float('inf')
+        target_thr = 3.2
+        attempts2 = 0
+        max_attempts2 = 2000
+        local_window2 = 2
+        from .scale_and_meter import SCALE_TABLE
+        while min_val < target_thr and attempts2 < max_attempts2:
+            l = max(0, min_idx - local_window2 - 1)
+            r = min(L, min_idx + local_window2 + 1)
+            prop = torsions.copy()
+            # Note-jump in the neighborhood of the tightest CA-CA pair
+            for idx in range(l, r):
+                mode_i = modes[idx]
+                bins = SCALE_TABLE[mode_i]
+                curr = torsions[idx]
+                dists = np.linalg.norm(bins - curr, axis=1)
+                order = np.argsort(dists)
+                cand_idx = int(order[1]) if order.shape[0] > 1 else int(order[0])
+                cand = bins[cand_idx].astype(np.float32)
+                jitter = rng.uniform(-final_step, final_step, size=(2,)).astype(np.float32)
+                trial = cand + jitter
+                sphi, spsi = snap_to_scale(mode_i, float(trial[0]), float(trial[1]))
+                prop[idx, 0] = sphi
+                prop[idx, 1] = spsi
+
+            bb_prop = self.build_backbone_from_torsions(prop, sequence)
+            # Evaluate CA-CA improvement
+            CAp = bb_prop[:, 1, :]
+            ca_dp = np.linalg.norm(CAp[1:] - CAp[:-1], axis=1)
+            minp = float(np.min(ca_dp)) if ca_dp.size > 0 else float('inf')
+            if minp > min_val or minp >= target_thr:
+                torsions = prop
+                bb_curr = bb_prop
+                min_val = minp
+                # Recompute min index for next round
+                if ca_dp.size > 0:
+                    min_idx = int(np.argmin(ca_dp) + 1)
+            else:
+                # Direct pairwise optimization over (k-1,k) bins
+                k = int(min_idx)
+                cand_prop = torsions.copy()
+                best_local = min_val
+                best_pair = None
+                for iidx in [k-1, k]:
+                    if iidx < 0 or iidx >= L:
+                        continue
+                # Build candidate sets
+                idx_a = k - 1
+                idx_b = k
+                if 0 <= idx_a < L and 0 <= idx_b < L:
+                    bins_a = SCALE_TABLE[modes[idx_a]]
+                    bins_b = SCALE_TABLE[modes[idx_b]]
+                    # Try up to 4 nearest bins for each
+                    def top_bins(bins, curr, top=4):
+                        d = np.linalg.norm(bins - curr, axis=1)
+                        ords = np.argsort(d)
+                        return bins[ords[:min(top, len(ords))]]
+                    A = top_bins(bins_a, torsions[idx_a])
+                    B = top_bins(bins_b, torsions[idx_b])
+                    for a in A:
+                        for b in B:
+                            tmp = torsions.copy()
+                            sphi, spsi = snap_to_scale(modes[idx_a], float(a[0]), float(a[1]))
+                            tmp[idx_a, 0] = sphi
+                            tmp[idx_a, 1] = spsi
+                            sphi2, spsi2 = snap_to_scale(modes[idx_b], float(b[0]), float(b[1]))
+                            tmp[idx_b, 0] = sphi2
+                            tmp[idx_b, 1] = spsi2
+                            bb_tmp = self.build_backbone_from_torsions(tmp, sequence)
+                            CAx = bb_tmp[:, 1, :]
+                            ca_dx = np.linalg.norm(CAx[1:] - CAx[:-1], axis=1)
+                            if ca_dx.size > 0:
+                                dmin = float(np.min(ca_dx))
+                                if dmin > best_local:
+                                    best_local = dmin
+                                    cand_prop = tmp
+                if best_local > min_val:
+                    torsions = cand_prop
+                    bb_curr = self.build_backbone_from_torsions(torsions, sequence)
+                    min_val = best_local
+                    if min_val >= target_thr:
+                        break
+                attempts2 += 1
+                if attempts2 % max(1, int(final_window_increment)) == 0 and local_window2 < 4:
+                    local_window2 += 1
+
         return torsions.tolist(), bb_curr
 
     # -------------------------
