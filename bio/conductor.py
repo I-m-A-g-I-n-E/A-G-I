@@ -16,11 +16,14 @@ except ImportError:  # allow running as a script: python bio/conductor.py
 # Chirality-aware notation
 try:
     from agi.harmonia.notation import Handedness
+    from agi.harmonia.notation import Movement, Gesture
 except Exception:
     # Fallback placeholder to avoid hard failure if module not found
     class Handedness:
         RIGHT = type("H", (), {"name": "RIGHT"})()
         LEFT = type("H", (), {"name": "LEFT"})()
+    Movement = None
+    Gesture = None
 
 def _min_caca_for_torsions_batch(args: tuple[str, list[np.ndarray]]) -> tuple[float, int]:
     """Compute the best (max) min CA-CA distance among a batch of candidate torsions.
@@ -168,6 +171,23 @@ class Conductor:
             self.handedness = [Handedness.RIGHT] * num_residues
         except Exception:
             pass
+
+        # Initialize Movement intents if available
+        try:
+            if Movement is not None and Gesture is not None:
+                mode_to_gesture = {
+                    'helix': Gesture.HELIX_P5,
+                    'sheet': Gesture.SHEET_CENTER,
+                    'loop': Gesture.LOOP_RESOLUTION,
+                }
+                self.movements = [
+                    Movement(gesture=mode_to_gesture.get(modes[i], Gesture.LOOP_RESOLUTION), mode=modes[i], hand_override=self.handedness[i])
+                    for i in range(num_residues)
+                ]
+            else:
+                self.movements = None
+        except Exception:
+            self.movements = None
 
         # 2. Generate Raw Torsion Angles from Music (key-aware)
         raw_torsions = [( -57.0, -47.0 )]  # placeholder for residue 0
@@ -473,6 +493,14 @@ class Conductor:
             chiral_map = [getattr(h, 'name', str(h)) for h in getattr(self, 'handedness', [Handedness.RIGHT] * L)]
         except Exception:
             chiral_map = ["RIGHT"] * L
+        # Gesture export (best effort)
+        try:
+            if getattr(self, 'movements', None) is not None:
+                gesture_map = [str(getattr(getattr(m, 'gesture', None), 'name', 'UNKNOWN')) for m in self.movements]
+            else:
+                gesture_map = []
+        except Exception:
+            gesture_map = []
 
         report = {
             "lengths": {
@@ -499,6 +527,7 @@ class Conductor:
             },
             "clashes": clashes,
             "chirality_map": chiral_map,
+            "gesture_map": gesture_map,
         }
         return report
 
@@ -987,6 +1016,9 @@ class Conductor:
                             self.handedness = [Handedness.RIGHT] * L
                         for idx in idxs:
                             self.handedness[idx] = Handedness.LEFT
+                            # also reflect in Movement intents if available
+                            if getattr(self, 'movements', None) is not None and 0 <= int(idx) < len(self.movements):
+                                self.movements[int(idx)].hand_override = Handedness.LEFT
                     except Exception:
                         pass
         except Exception:

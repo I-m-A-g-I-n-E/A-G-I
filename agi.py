@@ -228,10 +228,11 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
         diss_init_vec = pipeline.dissonance_scalar_to_vec(float(diss_initial), W)
         diss_ref_vec = pipeline.dissonance_scalar_to_vec(float(diss_refined), W)
         weights_center = {'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss}
-        wave_init = pipeline.sonify_3ch(comp, kore, certainty, diss_init_vec, bpm=bpm, stride_ticks=stride_ticks)
+        htags = getattr(conductor, 'handedness', None)
+        wave_init = pipeline.sonify_3ch(comp, kore, certainty, diss_init_vec, bpm=bpm, stride_ticks=stride_ticks, center_weights=weights_center, handedness=htags)
         pipeline.save_wav(wave_init, audio_wav.replace('.wav', '_initial.wav'))
         if refine:
-            wave_ref = pipeline.sonify_3ch(comp, kore, certainty, diss_ref_vec, bpm=bpm, stride_ticks=stride_ticks)
+            wave_ref = pipeline.sonify_3ch(comp, kore, certainty, diss_ref_vec, bpm=bpm, stride_ticks=stride_ticks, center_weights=weights_center, handedness=htags)
             pipeline.save_wav(wave_ref, audio_wav.replace('.wav', '_refined.wav'))
 
     click.echo("\n=== Structure Generation Complete ===")
@@ -393,13 +394,14 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
         kore = pipeline.estimate_kore(comp, sequence.strip().upper())
         W = int(certainty.shape[0])
         diss_init_vec = pipeline.dissonance_scalar_to_vec(float(diss_initial), W)
+        htags = getattr(conductor, 'handedness', None)
         wave_init = pipeline.sonify_3ch(comp, kore, certainty, diss_init_vec, bpm=bpm, stride_ticks=stride_ticks,
-                                        center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
+                                        center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss}, handedness=htags)
         pipeline.save_wav(wave_init, audio_wav.replace('.wav', '_initial.wav'))
         if refine:
             diss_ref_vec = pipeline.dissonance_scalar_to_vec(float(diss_refined), W)
             wave_ref = pipeline.sonify_3ch(comp, kore, certainty, diss_ref_vec, bpm=bpm, stride_ticks=stride_ticks,
-                                           center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss})
+                                           center_weights={'kore': wc_kore, 'cert': wc_cert, 'diss': wc_diss}, handedness=htags)
             pipeline.save_wav(wave_ref, audio_wav.replace('.wav', '_refined.wav'))
 
     click.echo("\n=== Play Complete ===")
