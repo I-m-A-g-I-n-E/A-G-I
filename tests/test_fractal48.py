@@ -432,8 +432,10 @@ def test_dtype_float64_precision():
     print("TESTING FLOAT64 PRECISION (FFT IDENTITY)")
     print("="*60)
     set_seed(1357)
-    x32 = torch.randn(1, 1, 48, 48, device=DEVICE)
-    x64 = x32.double()
+    # MPS does not support float64; run this precision test on CPU if needed
+    dev64 = torch.device('cpu') if DEVICE.type == 'mps' else DEVICE
+    x32 = torch.randn(1, 1, 48, 48, device=dev64)
+    x64 = x32.to(dtype=torch.float64)
     X64 = torch.fft.fft2(x64, norm='ortho')
     z64 = torch.fft.ifft2(X64, norm='ortho').real
     max_err64 = (z64 - x64).abs().max().item()
