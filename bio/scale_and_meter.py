@@ -3,9 +3,31 @@ from typing import List, Tuple
 
 # 1. The Scale: Allowed Torsion Angle Bins (Ramachandran Plot)
 SCALE_TABLE = {
-    'helix': np.array([[-57.0, -47.0]]),
-    'sheet': np.array([[-139.0, 135.0]]),
-    'loop':  np.array([[60.0, 60.0], [-75.0, 145.0], [-60.0, -140.0]])
+    # Alpha-helix region (φ≈-60, ψ≈-45). Provide a small palette of allowed notes.
+    'helix': np.array([
+        [-63.0, -42.0],
+        [-60.0, -45.0],
+        [-57.0, -47.0],
+        [-55.0, -50.0],
+    ], dtype=np.float32),
+    # Beta-sheet region (φ≈-135, ψ≈135). Provide a small palette.
+    'sheet': np.array([
+        [-150.0, 150.0],
+        [-139.0, 135.0],
+        [-130.0, 130.0],
+        [-120.0, 140.0],
+    ], dtype=np.float32),
+    # Loop/turn region with expanded palette to increase geometric flexibility
+    'loop':  np.array([
+        [60.0, 60.0],     # Left-handed helix
+        [-75.0, 145.0],   # Polyproline II
+        [-60.0, -140.0],  # Generic turn
+        [-90.0, 120.0],   # Extended beta region (increases separation)
+        [80.0, 0.0],      # Left-handed helix variant
+        [-100.0, 100.0],  # Bridge region
+        [-50.0, -30.0],   # Alpha-R region
+        [50.0, 50.0],     # Positive phi region
+    ], dtype=np.float32),
 }
 
 
