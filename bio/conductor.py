@@ -791,7 +791,11 @@ class Conductor:
                        debug_trace_path: str | None = None,
                        debug_log_every: int = 25,
                        debug_verbose: bool = False,
-                       wall_timeout_sec: float | None = None) -> tuple[list, np.ndarray]:
+                       wall_timeout_sec: float | None = None,
+                       # Live audio monitor (non-blocking background thread)
+                       enable_audio_monitor: bool = False,
+                       audio_stride: int = 20,
+                       audio_sample_rate: int = 12000) -> tuple[list, np.ndarray]:
         """
         Refines a set of torsion angles to minimize dissonance while staying on-key.
         Returns (refined_torsions_list, refined_backbone)
@@ -828,12 +832,49 @@ class Conductor:
             except Exception:
                 pass
 
+        # Optional live audio setup (lazy import; no-op if simpleaudio missing)
+        audio_streamer = None
+        def _emit_audio_from_summary(sumdict: dict):
+            nonlocal audio_streamer
+            try:
+                if not enable_audio_monitor or audio_streamer is None:
+                    return
+                # Map min_ca_ca to frequency 220–880 Hz (clamped 3.0–4.2 Å)
+                m = float(sumdict.get('min_ca_ca', 3.0))
+                m = max(3.0, min(4.2, m))
+                # linear map
+                f = 220.0 + (m - 3.0) * (880.0 - 220.0) / (4.2 - 3.0)
+                clashes = int(sumdict.get('num_clashes', 0))
+                amp = 0.06 if clashes == 0 else min(0.3, 0.06 + 0.04 * clashes)
+                pan = 0.0
+                audio_streamer.enqueue_tone(f, amp=amp, pan=pan)
+            except Exception:
+                pass
+
+        try:
+            if enable_audio_monitor:
+                try:
+                    from tools.live_audio import AudioStreamer  # type: ignore
+                    audio_streamer = AudioStreamer(sample_rate=int(audio_sample_rate), frame_sec=0.1, max_queue=16)
+                    audio_streamer.start()
+                except Exception:
+                    audio_streamer = None
+        except Exception:
+            audio_streamer = None
+
         # Evaluate initial
         bb_curr = self.build_backbone_from_torsions(torsions, sequence)
         best_score = self.calculate_dissonance(bb_curr, torsions, modes, weights)
         qc_curr = self.quality_check(bb_curr, np.array([t[0] for t in torsions]), np.array([t[1] for t in torsions]), modes)
         best_num_clashes = qc_curr['summary']['num_clashes']
         best_min_caca = qc_curr['summary']['min_ca_ca']
+
+        # Initial audio ping
+        try:
+            if enable_audio_monitor:
+                _emit_audio_from_summary(qc_curr['summary'])
+        except Exception:
+            pass
 
         iters_since_improvement = 0
 
@@ -1063,6 +1104,13 @@ class Conductor:
             if iters_since_improvement >= patience:
                 break
 
+            # Audio tap on stride
+            try:
+                if enable_audio_monitor and (i % max(1, int(audio_stride)) == 0):
+                    _emit_audio_from_summary(qc_curr['summary'])
+            except Exception:
+                pass
+
         # Phase B: balanced refinement
         remain = max_iters - phaseA_iters
         if remain > 0:
@@ -1127,6 +1175,13 @@ class Conductor:
                 if iters_since_improvement >= patience:
                     print(f"   - Rehearsal converged after {phaseA_iters + j + 1} iterations.")
                     break
+
+                # Audio tap on stride
+                try:
+                    if enable_audio_monitor and (j % max(1, int(audio_stride)) == 0):
+                        _emit_audio_from_summary(qc_curr['summary'])
+                except Exception:
+                    pass
 
         # Chiral inversion attempt: consciously try LEFT-handed local inversion near tightest CA-CA pair
         try:
@@ -1215,6 +1270,13 @@ class Conductor:
                 if attempts % max(1, int(final_window_increment)) == 0 and local_window < 4:
                     local_window += 1
 
+            # Audio tap on stride (reuse latest qc)
+            try:
+                if enable_audio_monitor and (attempts % max(1, int(audio_stride)) == 0):
+                    _emit_audio_from_summary(qc['summary'])
+            except Exception:
+                pass
+
         # Dedicated neighbor CA-CA repair pass: push min CA-CA above 3.2 Å
         try:
             CA = bb_curr[:, 1, :]
@@ -1267,9 +1329,6 @@ class Conductor:
                 if ca_dp.size > 0:
                     min_idx = int(np.argmin(ca_dp) + 1)
             else:
-                # Direct pairwise optimization over (k-1,k) bins
-                k = int(min_idx)
-                cand_prop = torsions.copy()
                 best_local = min_val
                 best_pair = None
                 for iidx in [k-1, k]:
