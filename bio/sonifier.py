@@ -84,6 +84,7 @@ class TrinitySonifier:
         dissonance: torch.Tensor,
         center_weights: dict,
         center_lp_hz: float = 400.0,
+        handedness: Optional[Iterable] = None,
     ) -> np.ndarray:
         """
         Generate a 3-channel waveform (L=keven, R=kodd, C=kore hinge) directly from 48D composition.
@@ -144,6 +145,30 @@ class TrinitySonifier:
 
         out = np.zeros((self.window_n * W, 3), dtype=np.float32)
 
+        # Normalize handedness into per-window tags: +1 for RIGHT, -1 for LEFT
+        htags = [1] * W
+        if handedness is not None:
+            try:
+                hh = list(handedness)
+                if len(hh) != W:
+                    # simple resample/truncate
+                    if len(hh) > 0:
+                        hh = [hh[min(int(i * len(hh) / W), len(hh)-1)] for i in range(W)]
+                    else:
+                        hh = [1] * W
+                for i in range(W):
+                    v = hh[i]
+                    if isinstance(v, str):
+                        htags[i] = -1 if v.upper().startswith('L') else 1
+                    elif isinstance(v, (int, float)):
+                        htags[i] = -1 if float(v) < 0 else 1
+                    else:
+                        # Enum-like with name attribute
+                        name = getattr(v, 'name', 'RIGHT')
+                        htags[i] = -1 if str(name).upper().startswith('L') else 1
+            except Exception:
+                htags = [1] * W
+
         for i in range(W):
             v = comp[i].numpy()
             keven = v[ke_idx]
@@ -160,8 +185,18 @@ class TrinitySonifier:
             ko_p = np.tanh(ko_p)
 
             phase = 2.0 * np.pi * freqs.reshape(-1, 1) * t.reshape(1, -1)
-            L_sig = (ke_p.reshape(-1, 1) * np.cos(phase)).sum(axis=0).astype(np.float32)
-            R_sig = (ko_p.reshape(-1, 1) * np.sin(phase)).sum(axis=0).astype(np.float32)
+            # Chirality-aware timbre: LEFT-handed windows slightly harsher and saturated
+            if htags[i] < 0:
+                # emphasize higher partials subtly for LEFT
+                tilt = np.linspace(1.0, 1.2, num=self.partials, dtype=np.float32)
+                ke_w = ke_p * tilt
+                ko_w = ko_p * tilt
+            else:
+                ke_w = ke_p
+                ko_w = ko_p
+
+            L_sig = (ke_w.reshape(-1, 1) * np.cos(phase)).sum(axis=0).astype(np.float32)
+            R_sig = (ko_w.reshape(-1, 1) * np.sin(phase)).sum(axis=0).astype(np.float32)
 
             # Center gain via kore projection + certainty - dissonance
             denom = (np.linalg.norm(v) * (float(torch.linalg.norm(kore).item()) + 1e-12) + 1e-12)
@@ -172,6 +207,24 @@ class TrinitySonifier:
             # squash to [0,1] with numeric stability
             cg_clip = float(np.clip(cg, -20.0, 20.0))
             center_gain = float(1.0 / (1.0 + np.exp(-cg_clip)))
+
+            # Apply subtle saturation and highpass for LEFT to evoke stress
+            if htags[i] < 0:
+                drive = 1.2
+                L_sig = np.tanh(drive * L_sig).astype(np.float32)
+                R_sig = np.tanh(drive * R_sig).astype(np.float32)
+                # simple 1st-order HP via differentiator + leak
+                alpha = 0.98
+                def hp(x: np.ndarray) -> np.ndarray:
+                    y = np.empty_like(x)
+                    prev = 0.0
+                    for n in range(x.shape[0]):
+                        d = x[n] - (x[n-1] if n > 0 else 0.0)
+                        prev = alpha * prev + d
+                        y[n] = prev
+                    return y.astype(np.float32)
+                L_sig = hp(L_sig)
+                R_sig = hp(R_sig)
 
             mono = 0.5 * (L_sig + R_sig)
             C_sig = lp_filter(mono) * center_gain
