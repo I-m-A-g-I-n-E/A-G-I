@@ -94,6 +94,22 @@ def _load_sequence_arg(seq_arg: Optional[str], seq_file: Optional[str], fallback
 @click.option('--w-neighbor-ca', type=float, default=0.0, show_default=True)
 @click.option('--w-nonadj-ca', type=float, default=0.0, show_default=True)
 @click.option('--w-dihedral', type=float, default=0.0, show_default=True)
+# Debug/trace
+@click.option('--trace', 'debug_trace_path', type=str, default=None, help='Path to write JSONL refinement trace')
+@click.option('--trace-log-every', 'debug_log_every', type=int, default=50, show_default=True, help='Trace every N iterations')
+@click.option('--trace-verbose', 'debug_verbose', is_flag=True, default=False, show_default=True, help='Trace every iteration with details')
+@click.option('--timeout-sec', 'wall_timeout_sec', type=float, default=None, help='Wall-clock timeout (seconds) for refinement')
+# Spacing/repair tuning
+@click.option('--neighbor-threshold', type=float, default=3.2, show_default=True)
+@click.option('--spacing-max-attempts', type=int, default=300, show_default=True)
+@click.option('--spacing-top-bins', type=int, default=4, show_default=True)
+@click.option('--spacing-continue-full', is_flag=True, default=False, show_default=True)
+@click.option('--final-attempts', type=int, default=2000, show_default=True)
+@click.option('--spacing-cross-mode', is_flag=True, default=False, show_default=True, help='Allow spacing pass to pull from any mode bins')
+@click.option('--critical-override-iters', type=int, default=0, show_default=True, help='Run greedy min_ca_ca override for N iterations at end')
+# Parallelism
+@click.option('--num-workers', type=int, default=0, show_default=True, help='Process workers for candidate eval (0=auto)')
+@click.option('--eval-batch', type=int, default=256, show_default=True, help='Batch size per worker for candidate eval')
 # Sonification
 @click.option('--sonify-3ch', is_flag=True, default=False, show_default=True)
 @click.option('--audio-wav', type=str, default=None, help='Output path for the 3-channel WAV file.')
@@ -108,6 +124,10 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
               refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
               w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
               w_neighbor_ca: float, w_nonadj_ca: float, w_dihedral: float,
+              debug_trace_path: Optional[str], debug_log_every: int, debug_verbose: bool, wall_timeout_sec: Optional[float],
+              neighbor_threshold: float, spacing_max_attempts: int, spacing_top_bins: int, spacing_continue_full: bool,
+              final_attempts: int, spacing_cross_mode: bool, critical_override_iters: int,
+              num_workers: int, eval_batch: int,
               sonify_3ch: bool, audio_wav: Optional[str], bpm: float, stride_ticks: int, amplify: float,
               wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
     """Generate PDB from composition mean; optional refine and 3-channel sonification."""
@@ -165,7 +185,16 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
         refined_torsions, refined_backbone = pipeline.refine_backbone(
             conductor, backbone, phi, psi, modes, seq,
             max_iters=int(refine_iters), step_deg=float(refine_step), seed=refine_seed, weights=weights,
+            debug_trace_path=debug_trace_path, debug_log_every=int(debug_log_every),
+            debug_verbose=bool(debug_verbose), wall_timeout_sec=wall_timeout_sec,
+            neighbor_threshold=float(neighbor_threshold), spacing_max_attempts=int(spacing_max_attempts),
+            spacing_top_bins=int(spacing_top_bins), spacing_continue_full=bool(spacing_continue_full),
+            final_attempts=int(final_attempts), spacing_cross_mode=bool(spacing_cross_mode),
+            critical_override_iters=int(critical_override_iters),
+            num_workers=int(num_workers), eval_batch=int(eval_batch),
         )
+        if debug_trace_path:
+            click.echo(f"   - Trace: {debug_trace_path}")
         ref_pdb = output_pdb.replace('.pdb', '_refined.pdb')
         conductor.save_to_pdb(refined_backbone, ref_pdb)
         # QC refined
@@ -276,6 +305,10 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
          save_prefix: str, output_pdb: str, refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
          w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
          w_neighbor_ca: float, w_nonadj_ca: float, w_dihedral: float,
+         debug_trace_path: Optional[str], debug_log_every: int, debug_verbose: bool, wall_timeout_sec: Optional[float],
+         neighbor_threshold: float, spacing_max_attempts: int, spacing_top_bins: int, spacing_continue_full: bool,
+         final_attempts: int, spacing_cross_mode: bool, critical_override_iters: int,
+         num_workers: int, eval_batch: int,
          sonify_3ch: bool, audio_wav: Optional[str], bpm: float,
          stride_ticks: int, amplify: float, wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
     """One-shot pipeline: compose → structure (optional refine) → optional 3ch sonify."""
@@ -331,7 +364,15 @@ def play(sequence: str, samples: int, variability: float, seed: Optional[int], w
         refined_torsions, refined_backbone = pipeline.refine_backbone(
             conductor, backbone, phi, psi, modes, sequence.strip().upper(),
             max_iters=int(refine_iters), step_deg=float(refine_step), seed=refine_seed, weights=weights,
+            debug_trace_path=debug_trace_path, debug_log_every=int(debug_log_every),
+            debug_verbose=bool(debug_verbose), wall_timeout_sec=wall_timeout_sec,
+            neighbor_threshold=float(neighbor_threshold), spacing_max_attempts=int(spacing_max_attempts),
+            spacing_top_bins=int(spacing_top_bins), spacing_continue_full=bool(spacing_continue_full),
+            final_attempts=int(final_attempts),
+            num_workers=int(num_workers), eval_batch=int(eval_batch),
         )
+        if debug_trace_path:
+            click.echo(f"   - Trace: {debug_trace_path}")
         ref_pdb = output_pdb.replace('.pdb', '_refined.pdb')
         conductor.save_to_pdb(refined_backbone, ref_pdb)
         rphi = np.array([t[0] for t in refined_torsions], dtype=np.float32)
