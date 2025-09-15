@@ -120,6 +120,7 @@ def _load_sequence_arg(seq_arg: Optional[str], seq_file: Optional[str], fallback
 @click.option('--wc-cert', type=float, default=1.0, show_default=True)
 @click.option('--wc-diss', type=float, default=2.5, show_default=True)
 @click.option('--repeat-windows', type=int, default=1, show_default=True)
+@click.option('--reference-pdb', type=str, default=None, help='Path to reference PDB for TM-score/RMSD validation')
 def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], sequence_file: Optional[str],
               refine: bool, refine_iters: int, refine_step: float, refine_seed: Optional[int],
               w_clash: float, w_ca: float, w_smooth: float, w_snap: float,
@@ -129,7 +130,7 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
               final_attempts: int, spacing_cross_mode: bool, critical_override_iters: int,
               num_workers: int, eval_batch: int,
               sonify_3ch: bool, audio_wav: Optional[str], bpm: float, stride_ticks: int, amplify: float,
-              wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int):
+              wc_kore: float, wc_cert: float, wc_diss: float, repeat_windows: int, reference_pdb: Optional[str]):
     """Generate PDB from composition mean; optional refine and 3-channel sonification."""
     mean, certainty = load_ensemble(input_prefix)
     if mean.ndim == 1:
@@ -220,6 +221,24 @@ def structure(input_prefix: str, output_pdb: str, sequence: Optional[str], seque
         diss_refined = conductor.calculate_dissonance(refined_backbone, torsions_ref, modes, weights)
     else:
         diss_refined = diss_initial
+
+    # Optional validation against reference structure
+    if reference_pdb:
+        try:
+            from agi.metro.validation import compare_structures
+            val = compare_structures(ref_pdb if refine else output_pdb, reference_pdb)
+            # Append to final qc
+            try:
+                # read-modify-write final qc
+                with open(qc_path, 'r') as fh:
+                    qc_final = json.load(fh)
+            except Exception:
+                qc_final = {}
+            qc_final['validation'] = val
+            save_json(qc_final, qc_path)
+            click.echo(f"   - Validation: TM-score={val.get('tm_score'):.3f}, RMSD={val.get('rmsd'):.3f}")
+        except Exception as e:
+            click.echo(f"[warn] Validation skipped: {e}")
 
     # Optional 3ch sonify
     if sonify_3ch and audio_wav:
