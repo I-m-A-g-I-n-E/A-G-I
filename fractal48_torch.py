@@ -13,6 +13,8 @@ import numpy as np
 from dataclasses import dataclass
 import time
 from bio.devices import get_device, svd_safe
+from agi.harmonia.laws import Laws, GESTURES
+from agi.harmonia.measure import tolerance_for
 
 # Centralized device selection (CUDA > MPS > CPU, with env overrides)
 DEVICE = get_device()
@@ -56,7 +58,7 @@ class Fractal48Layer(nn.Module):
     def space_to_depth_3(x: torch.Tensor) -> torch.Tensor:
         """3×3 spatial → channel permutation (pure reindexing)"""
         B, C, H, W = x.shape
-        assert H % 3 == 0 and W % 3 == 0, f"Dimensions must be divisible by 3, got {H}×{W}"
+        assert H % Laws.TRIADIC_BASE == 0 and W % Laws.TRIADIC_BASE == 0, f"Dimensions must be divisible by {Laws.TRIADIC_BASE}, got {H}×{W}"
         
         x = x.reshape(B, C, H//3, 3, W//3, 3)
         x = x.permute(0, 1, 3, 5, 2, 4).contiguous()
@@ -76,7 +78,7 @@ class Fractal48Layer(nn.Module):
     def depth_to_space_3(x: torch.Tensor) -> torch.Tensor:
         """Exact inverse of space_to_depth_3"""
         B, C, H, W = x.shape
-        assert C % 9 == 0, f"Channels must be divisible by 9, got {C}"
+        assert C % (Laws.TRIADIC_BASE * Laws.TRIADIC_BASE) == 0, f"Channels must be divisible by {Laws.TRIADIC_BASE * Laws.TRIADIC_BASE}, got {C}"
         
         x = x.reshape(B, C//9, 3, 3, H, W)
         x = x.permute(0, 1, 4, 2, 5, 3).contiguous()
@@ -177,7 +179,7 @@ class Fractal48Encoder(nn.Module):
         
         # Optional: learnable channel mixing at bottleneck (unitary constraint)
         # After 3× then 2×,2×,2×, channels scale by 9*4*4*4 = 576
-        self.bottleneck_mix = nn.Parameter(torch.eye(base_channels * 576))
+        self.bottleneck_mix = nn.Parameter(torch.eye(base_channels * Laws.BOTTLENECK_MULT))
         # Track if we've already orthonormalized the mixing matrix to avoid repeated large SVDs
         self._mix_orthonormalized: bool = False
     
@@ -187,7 +189,7 @@ class Fractal48Encoder(nn.Module):
         48×48 → 16×16 → 8×8 → 4×4 → 2×2
         """
         B, C, H, W = x.shape
-        assert H % 48 == 0 and W % 48 == 0, f"Input must be 48-aligned, got {H}×{W}"
+        assert H % Laws.MANIFOLD_DIM == 0 and W % Laws.MANIFOLD_DIM == 0, f"Input must be {Laws.MANIFOLD_DIM}-aligned, got {H}×{W}"
         
         # Track provenance
         prov = Provenance(
@@ -202,19 +204,22 @@ class Fractal48Encoder(nn.Module):
         
         # Step 1: 48×48 → 16×16 via 3×3 permutation
         x = self.frac_3x3.space_to_depth_3(x)
-        x = self.frac_3x3.integer_lift_mix(x, shift=1)
+        # Intent: harmonic lift on triadic permutation (was shift=1)
+        x = self.frac_3x3.integer_lift_mix(x, shift=GESTURES['HARMONIC'].shift)
         prov.factorization_path.append('3×3')
         prov.phase_history.append(x.detach().clone())
         
         # Step 2: 16×16 → 8×8 via 2×2 permutation
         x = self.frac_2x2_a.space_to_depth_2(x)
-        x = self.frac_2x2_a.integer_lift_mix(x, shift=2)
+        # Intent: tensive lift to prepare dyadic contraction (was shift=2)
+        x = self.frac_2x2_a.integer_lift_mix(x, shift=GESTURES['TENSIVE'].shift)
         prov.factorization_path.append('2×2_a')
         prov.phase_history.append(x.detach().clone())
         
         # Step 3: 8×8 → 4×4 via 2×2 permutation
         x = self.frac_2x2_b.space_to_depth_2(x)
-        x = self.frac_2x2_b.integer_lift_mix(x, shift=1)
+        # Intent: harmonic consolidation after dyadic split (was shift=1)
+        x = self.frac_2x2_b.integer_lift_mix(x, shift=GESTURES['HARMONIC'].shift)
         prov.factorization_path.append('2×2_b')
         prov.phase_history.append(x.detach().clone())
         
@@ -330,8 +335,8 @@ class Fractal48AutoEncoder(nn.Module):
             mae = F.l1_loss(result['reconstruction'], result['input'])
             max_error = (result['reconstruction'] - result['input']).abs().max()
             
-            # Check if reconstruction is near-perfect (accounting for float precision)
-            is_perfect = max_error < 1e-5
+            # Check if reconstruction is near-perfect (accounting for dtype precision)
+            is_perfect = max_error < tolerance_for(result['input'].dtype, 'reconstruction')
             
             return {
                 'mse': mse.item(),
@@ -351,18 +356,19 @@ class FractalCoordinateSystem:
     @staticmethod
     def to_fractal_coords(i: int) -> Tuple[int, int, int]:
         """Map linear index to (dyadic, triadic, phase) coordinates"""
-        assert 0 <= i < 48
-        dyadic = i % 16   # 2^4 component
-        triadic = i % 3    # 3^1 component
-        phase = (i // 16) + (i // 3) * 4
+        assert 0 <= i < Laws.MANIFOLD_DIM
+        dyadic = i % Laws.DYADIC_BASE   # 2^4 component
+        triadic = i % Laws.TRIADIC_BASE    # 3^1 component
+        phase = (i // Laws.DYADIC_BASE) + (i // Laws.TRIADIC_BASE) * 4
         return dyadic, triadic, phase
     
     @staticmethod
     def from_fractal_coords(dyadic: int, triadic: int) -> int:
         """Reconstruct linear index from fractal coordinates using CRT"""
         # Chinese Remainder Theorem reconstruction
-        # 3·11 ≡ 1 (mod 16) and 16·1 ≡ 1 (mod 3)
-        return (dyadic * 3 * 11 + triadic * 16) % 48
+        # Compute inverse dynamically: 3·inv3 ≡ 1 (mod 16) and 16·1 ≡ 1 (mod 3)
+        inv3_mod16 = pow(Laws.TRIADIC_BASE, -1, Laws.DYADIC_BASE)
+        return (dyadic * Laws.TRIADIC_BASE * inv3_mod16 + triadic * Laws.DYADIC_BASE) % Laws.MANIFOLD_DIM
     
     @staticmethod
     def get_local_opposite(i: int) -> int:
@@ -371,8 +377,8 @@ class FractalCoordinateSystem:
         d, t, p = coord_sys.to_fractal_coords(i)
         
         # Local opposite: complement dyadic, rotate triadic
-        d_opp = (~d) & 15  # 4-bit complement
-        t_opp = (t + 1) % 3  # Ternary rotation
+        d_opp = (~d) & Laws.DYADIC_MASK  # 4-bit complement
+        t_opp = (t + 1) % Laws.TRIADIC_BASE  # Ternary rotation
         
         return coord_sys.from_fractal_coords(d_opp, t_opp)
 
@@ -391,7 +397,7 @@ def create_test_data(batch_size: int = 4, channels: int = 3, size: int = 48) -> 
     for i in range(size):
         for j in range(size):
             # Encode position in fractal coordinates
-            idx = (i * size + j) % 48
+            idx = (i * size + j) % Laws.MANIFOLD_DIM
             d, t, p = coord_sys.to_fractal_coords(idx)
             x[:, :, i, j] += d * 0.1 + t * 0.01
 
