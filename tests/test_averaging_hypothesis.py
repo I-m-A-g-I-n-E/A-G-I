@@ -4,7 +4,7 @@ Quick test to compare averaging vs best-of-N selection.
 """
 import sys
 import numpy as np
-import torch    
+import torch
 from bio import pipeline
 
 def test_averaging_vs_best_of_n(sequence, seed=21, samples=8):
