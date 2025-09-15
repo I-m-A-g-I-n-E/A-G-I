@@ -91,3 +91,26 @@ class Movement:
         hand = self.hand_override if self.hand_override is not None else Handedness.RIGHT
         # Return magnitudes with selected hand
         return (Turn(abs(phi_base.value), hand), Turn(abs(psi_base.value), hand))
+
+    def to_degrees(self) -> Tuple[float, float]:
+        """Return (phi, psi) in degrees for the selected hand."""
+        phi_t, psi_t = self.get_torsions()
+        return (phi_t.signed_value() * 360.0, psi_t.signed_value() * 360.0)
+
+
+# Optional symbolic notes to reference in higher-level scales
+class HelixNotes(Enum):
+    P5 = 'helix_p5'
+    CENTER = 'helix_center'
+
+
+class LoopNotes(Enum):
+    PPII = 'loop_ppii'
+    RESOLUTION = 'loop_resolution'
+
+
+# Refinement policy registry (versioned) for QC reports
+REFINEMENT_POLICY = {
+    'version': '1.0.0',
+    'clash_cutoff': type('P', (), {'value': 2.0})(),  # Å cutoff encapsulated with .value for ease of use
+}
