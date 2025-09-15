@@ -138,10 +138,11 @@ def sonify_3ch(
     sample_rate: int = 48000,
     tonic_hz: float = 220.0,
     center_weights: Optional[Dict[str, float]] = None,
+    handedness: Optional[list] = None,
 ) -> np.ndarray:
     cw = center_weights or {"kore": 1.5, "cert": 1.0, "diss": 2.5}
     son = TrinitySonifier(sample_rate=sample_rate, bpm=bpm, tonic_hz=tonic_hz, stride_ticks=stride_ticks)
-    wave = son.sonify_composition_3ch(composition_vectors, kore_vector, certainty, dissonance, cw)
+    wave = son.sonify_composition_3ch(composition_vectors, kore_vector, certainty, dissonance, cw, handedness=handedness)
     return wave
 
 
