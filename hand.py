@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from enum import Enum
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (ensures 3D projection registers)
+import argparse
+import json
+import os
 
 from manifold import device, RouterMode, Fractal48Layer
 
@@ -132,7 +135,8 @@ class FiveFingerRouter(nn.Module):
         # Add rotation in random 2D subspaces
         for i in range(0, self.dim-1, 2):
             c, s = np.cos(angle), np.sin(angle)
-            mat[i:i+2, i:i+2] = torch.tensor([[c, -s], [s, c]])
+            rot = torch.tensor([[c, -s], [s, c]], dtype=mat.dtype, device=mat.device)
+            mat[i:i+2, i:i+2] = rot
         return mat
 
     def route_through_hand(self, x: torch.Tensor, 
@@ -337,7 +341,7 @@ def _pca_project_to_3d(vectors: torch.Tensor) -> np.ndarray:
     proj = (X @ components).detach().to('cpu').numpy()
     return proj
 
-def visualize_hand_tensor(hand_tensor: HandTensor, title: str = "Hand Tensor (PCA 3D)") -> None:
+def visualize_hand_tensor(hand_tensor: HandTensor, title: str = "Hand Tensor (PCA 3D)", save_path: Optional[str] = None) -> None:
     """
     Visualize a single HandTensor's five finger channels in 3D via PCA.
     Colors map to fingers: thumb, index, middle, ring, pinky.
@@ -365,12 +369,18 @@ def visualize_hand_tensor(hand_tensor: HandTensor, title: str = "Hand Tensor (PC
     ax.set_zlabel('PC3')
     ax.legend(loc='best')
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+        plt.savefig(save_path, dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
 
 def visualize_word_trajectory(system: "FullBodyTensorSystem", word: str,
                               show_steps: int = 10,
                               include_wm: bool = True,
-                              title: Optional[str] = None) -> None:
+                              title: Optional[str] = None,
+                              save_path: Optional[str] = None) -> None:
     """
     Visualize how the embodied state evolves across the steps of a word.
     - Uses PCA fitted on all step states (and optionally W/M outputs) to 3D.
@@ -432,7 +442,109 @@ def visualize_word_trajectory(system: "FullBodyTensorSystem", word: str,
     ax.set_zlabel('PC3')
     ax.legend(loc='best')
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+        plt.savefig(save_path, dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Hand Tensor CLI — five-finger routing through the 48-manifold")
+    parser.add_argument('--device', default=None, help="Override device string (e.g., cpu, cuda, mps)")
+    sub = parser.add_subparsers(dest='cmd', required=False)
+
+    # demo
+    sub.add_parser('demo', help="Run the interactive demonstration")
+
+    # gestures
+    p_g = sub.add_parser('gestures', help="Print gesture sequence for a word")
+    p_g.add_argument('--word', required=True, help="Input word")
+
+    # embody
+    p_e = sub.add_parser('embody', help="Run embodiment pipeline for a word and print summary JSON")
+    p_e.add_argument('--word', required=True, help="Input word")
+    p_e.add_argument('--details', action='store_true', help="Include per-step energies in JSON")
+
+    # visualize-word
+    p_vw = sub.add_parser('visualize-word', help="Visualize word trajectory in 3D (PCA)")
+    p_vw.add_argument('--word', required=True, help="Input word")
+    p_vw.add_argument('--steps', type=int, default=10, help="Number of steps to visualize")
+    p_vw.add_argument('--no-wm', action='store_true', help="Do not include W/M points")
+    p_vw.add_argument('--title', default=None, help="Plot title override")
+    p_vw.add_argument('--save', default=None, help="Path to save the figure instead of showing it")
+
+    # analyze-fingers
+    p_af = sub.add_parser('analyze-fingers', help="Analyze finger dynamics (energy per channel)")
+    p_af.add_argument('--word', required=False, default="point", help="Optional word label (not used in computation)")
+
+    return parser
+
+def _cli_main(argv: Optional[List[str]] = None) -> int:
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+
+    # Optional device override (best effort)
+    if getattr(args, 'device', None):
+        os.environ['TORCH_DEVICE'] = args.device
+
+    print(f"Device: {device}")
+
+    # If no subcommand, default to demo
+    cmd = args.cmd or 'demo'
+
+    if cmd == 'demo':
+        demonstrate_hand_tensor_system()
+        return 0
+
+    system = FullBodyTensorSystem().to(device)
+
+    if cmd == 'gestures':
+        gestures = system.word_to_gesture_sequence(args.word)
+        for i, (l, r) in enumerate(gestures):
+            ch = args.word[i] if i < len(args.word) else ''
+            print(f"{i:02d} {ch}: L={l} R={r}")
+        return 0
+
+    if cmd == 'embody':
+        res = system.embody_word(args.word)
+        final = res['final']
+        summary = {
+            'word': args.word,
+            'final': {
+                'mean_abs': float(final.abs().mean().item()),
+                'norm': float(final.norm().item()),
+            },
+        }
+        if args.details:
+            steps = {}
+            for k, v in res.items():
+                if not k.startswith('step_'):
+                    continue
+                steps[k] = {
+                    'w_energy': float(v['w'].abs().mean().item()),
+                    'm_energy': float(v['m'].abs().mean().item()),
+                }
+            summary['steps'] = steps
+        print(json.dumps(summary, indent=2))
+        return 0
+
+    if cmd == 'visualize-word':
+        visualize_word_trajectory(system, args.word,
+                                  show_steps=args.steps,
+                                  include_wm=not args.no_wm,
+                                  title=args.title,
+                                  save_path=args.save)
+        return 0
+
+    if cmd == 'analyze-fingers':
+        energies = system.analyze_finger_dynamics(args.word)
+        for k, v in energies.items():
+            print(f"{k:20s} {v:.4f}")
+        return 0
+
+    parser.print_help()
+    return 1
 
 def demonstrate_hand_tensor_system():
     """
@@ -562,5 +674,4 @@ def demonstrate_hand_tensor_system():
     print("=" * 60)
 
 if __name__ == "__main__":
-    print(f"Device: {device}")
-    demonstrate_hand_tensor_system()
+    raise SystemExit(_cli_main())
