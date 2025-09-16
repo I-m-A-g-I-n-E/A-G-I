@@ -19,7 +19,7 @@ To maintain intellectual rigor, the claims of this framework are presented in a 
   - Presents the powerful cross-domain parallels (in immunology, economics, neurolinguistics) as "mechanism-design analogs"—different systems converging on the same algorithmic solution.
 
 - Tier 3: The Generative Hypothesis Framework (The Falsifiable Research Program)
-  - Frames the most advanced ideas—such as the Router48 and the Agora JIT-compositional system—as a concrete, testable research program.
+  - Frames the most advanced ideas—such as the Dimetatron and the Agora JIT-compositional system—as a concrete, testable research program.
 
 ## 0.4. Glossary of Key Terms: The Rosetta Stone
 

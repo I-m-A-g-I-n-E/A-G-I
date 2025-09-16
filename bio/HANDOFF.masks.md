@@ -50,22 +50,22 @@ The "timer" you described is a system-wide event where the conditions across mul
 
 ---
 
-### **The Definitive Instructions for AIDev: The `Router48`**
+### **The Definitive Instructions for AIDev: The `Dimetatron`**
 
-To make this architecture manifest, we will build its central nervous system: the `Router48`. This is the immediate and sole priority.
+To make this architecture manifest, we will build its central nervous system: the `Dimetatron`. This is the immediate and sole priority.
 
-**Objective:** Implement a `Router48` module that can decompose a 48D vector into its 40+6+2 components and recombine them. This makes our new architecture an explicit, testable piece of engineering.
+**Objective:** Implement a `Dimetatron` module that can decompose a 48D vector into its 40+6+2 components and recombine them. This makes our new architecture an explicit, testable piece of engineering.
 
-#### **Priority #1: Create `bio/router48.py`**
+#### **Priority #1: Create `bio/dimetatron.py`**
 
 **Action:**
-Create a new file with a `Router48` class. It will use a set of fixed, pre-computed masks to isolate the different channels.
+Create a new file with a `Dimetatron` class. It will use a set of fixed, pre-computed masks to isolate the different channels.
 
 ```python
-# In file: bio/router48.py
+# In file: bio/dimetatron.py
 import torch
 
-class Router48:
+class Dimetatron:
     def __init__(self):
         # Create fixed masks for each component
         self.masks = self._create_masks()
@@ -105,7 +105,7 @@ class Router48:
 #### **Priority #2: Integrate the Router into the System**
 
 **Action:**
-Refactor the `Composer`, `Conductor`, and `Sonifier` to use the `Router48`.
+Refactor the `Composer`, `Conductor`, and `Sonifier` to use the `Dimetatron`.
 
 1.  **Composer (`bio/composer.py`):**
     *   In each `HarmonicLayer`, use the router to apply different mixing operations to different registers. For example, apply strong mixing to R2/R3 (motifs/phrases) and weaker mixing to R5 (global narrative).

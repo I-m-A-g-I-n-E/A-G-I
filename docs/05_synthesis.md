@@ -21,7 +21,7 @@ Our research program has evolved from analysis to generation. The path forward i
   - Next Step: Perfect the NeRF implementation to ensure a chemically flawless backbone (out_of_range_lengths/angles: 0) before refinement.
 
 - Phase 4: The Agora (The Future Vision)
-  - The long-term vision is a self-composing system built on the Router48, a 40+6+2 channel architecture that dynamically assembles JIT "ensembles" (microservices) based on the musical key of an incoming request.
+  - The long-term vision is a self-composing system built on the Dimetatron, a 40+6+2 channel architecture that dynamically assembles JIT "ensembles" (microservices) based on the musical key of an incoming request.
 
 ## 5.3. Risks and Ethical Guardrails
 
