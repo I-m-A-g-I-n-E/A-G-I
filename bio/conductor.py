@@ -1329,11 +1329,10 @@ class Conductor:
                 if ca_dp.size > 0:
                     min_idx = int(np.argmin(ca_dp) + 1)
             else:
+                # Initialize local search around current tightest pair (min_idx)
                 best_local = min_val
-                best_pair = None
-                for iidx in [k-1, k]:
-                    if iidx < 0 or iidx >= L:
-                        continue
+                # Define k from current min_idx
+                k = int(min_idx)
                 # Build candidate sets
                 idx_a = k - 1
                 idx_b = k
@@ -1358,6 +1357,7 @@ class Conductor:
                             tmp[idx_b, 0] = sphi2
                             tmp[idx_b, 1] = spsi2
                             cand_list.append(tmp)
+                    cand_prop = None
                     if int(num_workers) > 1 and cand_list:
                         batches = [cand_list[i:i+int(eval_batch)] for i in range(0, len(cand_list), int(eval_batch))]
                         with ProcessPoolExecutor(max_workers=int(num_workers)) as ex:
@@ -1381,7 +1381,8 @@ class Conductor:
                                 if dmin > best_local:
                                     best_local = dmin
                                     cand_prop = tmp
-                if best_local > min_val:
+                # Apply best local candidate if found
+                if best_local > min_val and cand_prop is not None:
                     torsions = cand_prop
                     bb_curr = self.build_backbone_from_torsions(torsions, sequence)
                     min_val = best_local
