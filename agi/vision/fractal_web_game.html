@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌟 Fractal Friends - Kid's Adventure 🌟</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Comic Sans MS', 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+        
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB 0%, #98D8E8 100%);
+            cursor: pointer;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            font-size: 20px;
+            pointer-events: none;
+        }
+        
+        #score {
+            font-size: 36px;
+            font-weight: bold;
+            color: #FFD700;
+            margin-bottom: 10px;
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            background: rgba(0,0,0,0.3);
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        
+        .emoji-btn {
+            font-size: 40px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 5px;
+        }
+        
+        .emoji-btn:hover {
+            transform: scale(1.2);
+        }
+        
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .bouncing {
+            animation: bounce 1s infinite;
+        }
+        
+        .spinning {
+            animation: spin 2s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="ui">
+            <div id="score">Score: 0</div>
+            <div id="level">Level: 1</div>
+            <div id="fractals">Friends: 1</div>
+        </div>
+        
+        <div id="controls">
+            <button class="emoji-btn" onclick="changeTheme()">🎨</button>
+            <button class="emoji-btn" onclick="toggleSound()">🔊</button>
+            <button class="emoji-btn" onclick="resetGame()">🔄</button>
+            <button class="emoji-btn" onclick="randomGrow()">✨</button>
+        </div>
+        
+        <div id="instructions">
+            Click on creatures to grow friends! 🌟 Tap anywhere to create new fractals!
+        </div>
+    </div>
+
+    <script>
+        // Game setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 1024;
+        canvas.height = 600;
+        
+        // Game state
+        let score = 0;
+        let level = 1;
+        let time = 0;
+        let sprites = [];
+        let particles = [];
+        let connections = [];
+        let soundEnabled = true;
+        
+        // Themes
+        const themes = {
+            animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯'],
+            space: ['🌟', '✨', '💫', '⭐', '🌙', '☄️', '🚀', '🛸', '👽', '🌎'],
+            nature: ['🌸', '🌺', '🌻', '🌹', '🌷', '🌲', '🌳', '🍄', '🦋', '🐝'],
+            food: ['🍎', '🍊', '🍋', '🍓', '🍇', '🍉', '🍑', '🍒', '🧁', '🍭'],
+            ocean: ['🐠', '🐟', '🦈', '🐙', '🦑', '🦐', '🦀', '🐚', '🐋', '🐬']
+        };
+        let currentTheme = 'animals';
+        let themeIndex = 0;
+        
+        // Color schemes
+        const colorSchemes = [
+            ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'],
+            ['#FF0080', '#FF8C00', '#FFD700', '#00CED1', '#9370DB', '#FF1493'],
+            ['#6C5CE7', '#A29BFE', '#FD79A8', '#FDCB6E', '#6C5CE7', '#00B894'],
+            ['#EB3B5A', '#FA8231', '#F7DC6F', '#52C234', '#3498DB', '#9B59B6']
+        ];
+        let currentColorScheme = 0;
+        
+        // Sprite class
+        class FractalSprite {
+            constructor(x, y, size = 40, generation = 0, parent = null) {
+                this.x = x;
+                this.y = y;
+                this.size = size;
+                this.generation = generation;
+                this.parent = parent;
+                this.children = [];
+                this.emoji = themes[currentTheme][Math.floor(Math.random() * themes[currentTheme].length)];
+                this.color = colorSchemes[currentColorScheme][generation % colorSchemes[currentColorScheme].length];
+                this.wobble = Math.random() * Math.PI * 2;
+                this.pulse = 0;
+                this.bounce = 0;
+                this.rotation = 0;
+                this.scale = 1;
+                this.personality = ['happy', 'silly', 'excited', 'sleepy'][Math.floor(Math.random() * 4)];
+                this.sparkles = [];
+                this.glow = 0;
+            }
+            
+            update(dt) {
+                // Wobble animation
+                this.wobble += dt * 3;
+                
+                // Pulse effect
+                this.pulse += dt * 4;
+                this.scale = 1 + Math.sin(this.pulse) * 0.1;
+                
+                // Bounce for happy sprites
+                if (this.personality === 'happy') {
+                    this.bounce = Math.abs(Math.sin(this.wobble * 2)) * 10;
+                }
+                
+                // Spin for excited sprites
+                if (this.personality === 'excited') {
+                    this.rotation += dt * 2;
+                }
+                
+                // Update sparkles
+                this.sparkles = this.sparkles.filter(s => s.life > 0);
+                this.sparkles.forEach(s => {
+                    s.y -= dt * 50;
+                    s.life -= dt;
+                });
+                
+                // Add new sparkles
+                if (Math.random() < 0.02 && this.personality === 'excited') {
+                    this.sparkles.push({
+                        x: (Math.random() - 0.5) * this.size,
+                        y: 0,
+                        life: 1
+                    });
+                }
+                
+                // Fade glow
+                this.glow = Math.max(0, this.glow - dt);
+            }
+            
+            draw() {
+                ctx.save();
+                
+                // Position with wobble
+                const drawX = this.x + Math.sin(this.wobble) * 2;
+                const drawY = this.y - this.bounce + Math.cos(this.wobble * 0.7) * 1;
+                
+                // Glow effect
+                if (this.glow > 0) {
+                    ctx.shadowBlur = 30 * this.glow;
+                    ctx.shadowColor = this.color;
+                }
+                
+                // Draw main circle
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = 0.8;
+                ctx.beginPath();
+                ctx.arc(drawX, drawY, this.size * this.scale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                
+                // Draw face
+                ctx.fillStyle = '#000';
+                
+                // Eyes
+                const eyeSize = this.size * 0.1;
+                const eyeOffset = this.size * 0.3;
+                
+                if (this.personality !== 'sleepy') {
+                    // Open eyes
+                    ctx.beginPath();
+                    ctx.arc(drawX - eyeOffset, drawY - eyeOffset, eyeSize, 0, Math.PI * 2);
+                    ctx.arc(drawX + eyeOffset, drawY - eyeOffset, eyeSize, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Sleepy eyes (lines)
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(drawX - eyeOffset - eyeSize, drawY - eyeOffset);
+                    ctx.lineTo(drawX - eyeOffset + eyeSize, drawY - eyeOffset);
+                    ctx.moveTo(drawX + eyeOffset - eyeSize, drawY - eyeOffset);
+                    ctx.lineTo(drawX + eyeOffset + eyeSize, drawY - eyeOffset);
+                    ctx.stroke();
+                }
+                
+                // Mouth
+                ctx.beginPath();
+                if (this.personality === 'happy') {
+                    // Smile
+                    ctx.arc(drawX, drawY, this.size * 0.5, 0, Math.PI);
+                } else if (this.personality === 'silly') {
+                    // Tongue out
+                    ctx.fillStyle = '#FF69B4';
+                    ctx.arc(drawX, drawY + this.size * 0.3, this.size * 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#000';
+                }
+                ctx.stroke();
+                
+                // Draw emoji
+                ctx.font = `${this.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(this.emoji, drawX, drawY);
+                
+                // Draw sparkles
+                ctx.fillStyle = '#FFD700';
+                this.sparkles.forEach(s => {
+                    ctx.globalAlpha = s.life;
+                    ctx.beginPath();
+                    ctx.arc(drawX + s.x, drawY + s.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                ctx.restore();
+            }
+            
+            spawn() {
+                if (this.generation >= 5) return;
+                
+                const numChildren = this.generation % 2 === 0 ? 2 : 3;
+                
+                for (let i = 0; i < numChildren; i++) {
+                    const angle = (i * Math.PI * 2 / numChildren) + time;
+                    const distance = this.size * 2.5;
+                    
+                    const childX = this.x + Math.cos(angle) * distance;
+                    const childY = this.y + Math.sin(angle) * distance;
+                    
+                    const child = new FractalSprite(
+                        childX, childY,
+                        this.size * 0.7,
+                        this.generation + 1,
+                        this
+                    );
+                    
+                    this.children.push(child);
+                    sprites.push(child);
+                    
+                    // Create particles
+                    createParticleBurst(childX, childY, child.color);
+                    
+                    // Update score
+                    score += 10 * (this.generation + 1);
+                    updateUI();
+                    
+                    // Play sound
+                    if (soundEnabled) {
+                        playPopSound();
+                    }
+                }
+                
+                this.glow = 1;
+            }
+        }
+        
+        // Particle system
+        function createParticleBurst(x, y, color) {
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    color: color,
+                    life: 1,
+                    size: Math.random() * 5 + 2
+                });
+            }
+        }
+        
+        function updateParticles(dt) {
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.5; // gravity
+                p.life -= dt * 2;
+            });
+        }
+        
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+        }
+        
+        // Draw connections
+        function drawConnections() {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = 2;
+            
+            sprites.forEach(sprite => {
+                if (sprite.parent) {
+                    ctx.beginPath();
+                    
+                    // Wavy line
+                    const steps = 20;
+                    for (let i = 0; i <= steps; i++) {
+                        const t = i / steps;
+                        const wave = Math.sin(t * Math.PI * 3 + time * 2) * 10;
+                        const x = sprite.parent.x + (sprite.x - sprite.parent.x) * t;
+                        const y = sprite.parent.y + (sprite.y - sprite.parent.y) * t + wave;
+                        
+                        if (i === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    
+                    ctx.stroke();
+                }
+            });
+        }
+        
+        // Initialize game
+        function init() {
+            // Create first sprite
+            sprites = [new FractalSprite(canvas.width / 2, canvas.height / 2)];
+            particles = [];
+            score = 0;
+            level = 1;
+            updateUI();
+        }
+        
+        // Update UI
+        function updateUI() {
+            document.getElementById('score').textContent = `Score: ${score}`;
+            document.getElementById('level').textContent = `Level: ${level}`;
+            document.getElementById('fractals').textContent = `Friends: ${sprites.length}`;
+            
+            // Level up
+            if (score > level * 500) {
+                level++;
+                createParticleBurst(canvas.width / 2, canvas.height / 2, '#FFD700');
+            }
+        }
+        
+        // Sound effects
+        function playPopSound() {
+            if (!soundEnabled) return;
+            
+            // Create a simple pop sound using Web Audio API
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(400, audioContext.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } catch (e) {
+                // Audio not supported
+            }
+        }
+        
+        // Input handling
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Check if clicking on a sprite
+            let clicked = false;
+            for (const sprite of sprites) {
+                const dx = sprite.x - x;
+                const dy = sprite.y - y;
+                if (Math.sqrt(dx*dx + dy*dy) < sprite.size) {
+                    sprite.spawn();
+                    clicked = true;
+                    break;
+                }
+            }
+            
+            // If not clicking on sprite, create new one
+            if (!clicked) {
+                const newSprite = new FractalSprite(x, y);
+                sprites.push(newSprite);
+                createParticleBurst(x, y, newSprite.color);
+            }
+        });
+        
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            
+            const clickEvent = new MouseEvent('click', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(clickEvent);
+        });
+        
+        // Control functions
+        function changeTheme() {
+            const themeNames = Object.keys(themes);
+            themeIndex = (themeIndex + 1) % themeNames.length;
+            currentTheme = themeNames[themeIndex];
+        }
+        
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+        }
+        
+        function resetGame() {
+            init();
+        }
+        
+        function randomGrow() {
+            if (sprites.length > 0) {
+                const randomSprite = sprites[Math.floor(Math.random() * sprites.length)];
+                randomSprite.spawn();
+            }
+        }
+        
+        // Animation loop
+        let lastTime = 0;
+        function animate(currentTime) {
+            const dt = Math.min((currentTime - lastTime) / 1000, 0.1); // Cap dt
+            lastTime = currentTime;
+            time += dt;
+            
+            // Clear canvas
+            ctx.fillStyle = 'rgba(135, 206, 235, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Update
+            sprites.forEach(sprite => sprite.update(dt));
+            updateParticles(dt);
+            
+            // Draw
+            drawConnections();
+            drawParticles();
+            sprites.forEach(sprite => sprite.draw());
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // Start game
+        init();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
