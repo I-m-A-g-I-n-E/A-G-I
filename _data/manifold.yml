@@ -1,0 +1,176 @@
+# Configurable framework terminology and branding
+# Update these values to change references across the entire site
+
+# Core naming
+name: "{wtf²B•2^4*3} Manifold"
+short_name: "48-Manifold"
+tagline: "Where Music Becomes Structure, Structure Becomes Reality"
+domain: "A-G-I.space"
+
+# Mathematical properties
+dimensions: 48
+factorization: "2^4 × 3"
+formula: "48 = 2^4 × 3"
+
+# Framework components
+components:
+  core:
+    name: "Core Manifold"
+    description: "The fundamental 48-dimensional substrate"
+  
+  fractal_layer:
+    name: "Fractal48Layer"
+    description: "Reversible transformation layer"
+  
+  harmonic_propagator:
+    name: "HarmonicPropagator"
+    description: "Composition engine for amino acid sequences"
+  
+  conductor:
+    name: "Conductor"
+    description: "Structure generator from harmonic composition"
+  
+  sonifier:
+    name: "TrinitySonifier"
+    description: "Three-channel molecular audio synthesis"
+
+# Terminology mapping
+terms:
+  # Core concepts
+  manifold: "{wtf²B•2^4*3} Manifold"
+  transfer: "Transfer Operation"
+  transform: "Transform (deprecated)"
+  
+  # Musical/Game theory terms
+  keven: "keven (Left/Cold/Structural)"
+  kodd: "kodd (Right/Hot/Dynamic)"
+  kore: "kore (Center/Ground/Tonic)"
+  kull: "kull (Canonicalization/Integrity Filter)"
+  kunit: "kunit (Atomic Unit)"
+  khord: "khord (Harmonic Assembly)"
+  kunity: "kunity (Complete Process)"
+  
+  # Router modes
+  w_mode: "W (Possibility/Left Hand)"
+  m_mode: "M (Manifestation/Right Hand)"
+  
+  # Metrics
+  certainty: "Harmonic Certainty"
+  dissonance: "Dissonance Score"
+  harmony: "Structural Harmony"
+
+# Applications
+applications:
+  protein_folding:
+    title: "Protein Structure Prediction"
+    icon: "🧬"
+    description: "Generate 3D structures from sequences"
+  
+  fusion_control:
+    title: "Fusion Reactor Control"
+    icon: "⚛️"
+    description: "48-phase stabilization systems"
+  
+  molecular_music:
+    title: "Molecular Sonification"
+    icon: "🎵"
+    description: "Three-channel protein audio"
+  
+  reversible_ml:
+    title: "Reversible Machine Learning"
+    icon: "🤖"
+    description: "Zero-aliasing neural networks"
+  
+  immune_qa:
+    title: "Immune-Analog QA"
+    icon: "🛡️"
+    description: "Protein quality assurance"
+
+# Key metrics and achievements
+metrics:
+  correlation_alphafold: 0.816
+  test_passing: "21/21"
+  drift_reduction: "40%"
+  conditioning_improvement: "25%"
+  reconstruction_error: "< 1e-10"
+
+# Team and contact
+contact:
+  email: "research@A-G-I.space"
+  github: "https://github.com/I-m-A-g-I-n-E"
+  
+# Social media placeholders
+social:
+  twitter: "48manifold"
+  linkedin: "48-manifold"
+  
+# Color scheme references (match theme.css)
+colors:
+  primary: "#1a237e"
+  accent: "#ffc107"
+  success: "#2e7d32"
+  warning: "#f57c00"
+  error: "#c62828"
+
+# Image size definitions
+images:
+  logo:
+    small: "48x48"
+    medium: "96x96"
+    large: "192x192"
+  
+  hero:
+    desktop: "1920x800"
+    tablet: "1024x600"
+    mobile: "768x400"
+  
+  card:
+    thumbnail: "400x300"
+    featured: "800x600"
+  
+  icon:
+    small: "24x24"
+    medium: "48x48"
+    large: "96x96"
+
+# Deepnote placeholders
+deepnote:
+  workspace: "48-manifold"
+  workspace_url: "https://deepnote.com/@48-manifold"
+  
+  notebooks:
+    quickstart: "quickstart-tutorial-uuid"
+    protein_composer: "protein-composer-uuid"
+    fractal_navigator: "fractal-navigator-uuid"
+    hand_tensor: "hand-tensor-uuid"
+    
+  embed_height:
+    small: 400
+    medium: 600
+    large: 800
+
+# Feature flags
+features:
+  show_blog: true
+  show_team: true
+  show_documentation: true
+  show_playground: true
+  enable_search: false
+  enable_comments: false
+  enable_newsletter: false
+  
+# SEO and metadata
+seo:
+  title: "{wtf²B•2^4*3} Manifold - Revolutionary Computational Framework"
+  description: "A unified computational framework preserving wholeness through reversible transfers on a 48-dimensional manifold. Applications in protein folding, fusion control, and machine learning."
+  keywords:
+    - "48-manifold"
+    - "reversible computing"
+    - "protein folding"
+    - "harmonic composition"
+    - "fusion control"
+    - "molecular sonification"
+    - "machine learning"
+  
+  og_image: "/assets/images/og-image.png"
+  twitter_card: "summary_large_image"

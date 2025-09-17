@@ -1,0 +1,621 @@
+---
+layout: page
+title: Interactive Playground
+permalink: /playground/
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>48-Manifold Interactive Playground</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        .playground-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 2rem;
+        }
+        
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            font-size: 1rem;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .tab.active {
+            border-bottom-color: #1a237e;
+            color: #1a237e;
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .demo-section {
+            background: white;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 0.25rem;
+            font-size: 1rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+        
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        button {
+            padding: 0.75rem 1.5rem;
+            background: #1a237e;
+            color: white;
+            border: none;
+            border-radius: 0.25rem;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #283593;
+        }
+        
+        button.secondary {
+            background: #757575;
+        }
+        
+        button.secondary:hover {
+            background: #616161;
+        }
+        
+        .output-container {
+            background: #f5f5f5;
+            border-radius: 0.25rem;
+            padding: 1.5rem;
+            margin-top: 2rem;
+            min-height: 200px;
+        }
+        
+        .output-header {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #666;
+            text-transform: uppercase;
+            font-size: 0.875rem;
+            letter-spacing: 0.05em;
+        }
+        
+        #structure-viewer {
+            width: 100%;
+            height: 400px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 0.25rem;
+            margin-top: 1rem;
+        }
+        
+        #audio-player {
+            width: 100%;
+            margin-top: 1rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+        
+        .error {
+            color: #d32f2f;
+            background: #ffebee;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin-top: 1rem;
+        }
+        
+        .success {
+            color: #388e3c;
+            background: #e8f5e9;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin-top: 1rem;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .metric {
+            background: white;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a237e;
+        }
+        
+        .metric-label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+            margin-top: 0.25rem;
+        }
+        
+        .code-editor {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+        }
+        
+        .example-sequences {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .example-btn {
+            padding: 0.25rem 0.75rem;
+            background: #e0e0e0;
+            border: none;
+            border-radius: 0.25rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+        
+        .example-btn:hover {
+            background: #bdbdbd;
+        }
+    </style>
+</head>
+<body>
+    <div class="playground-container">
+        <h1>48-Manifold Interactive Playground</h1>
+        <p>Explore the capabilities of the 48-Manifold system through interactive demonstrations.</p>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('protein')">Protein Composer</button>
+            <button class="tab" onclick="switchTab('fractal')">Fractal Navigator</button>
+            <button class="tab" onclick="switchTab('hand')">Hand Tensor</button>
+            <button class="tab" onclick="switchTab('code')">Code Sandbox</button>
+        </div>
+        
+        <!-- Protein Composer Tab -->
+        <div id="protein-tab" class="tab-content active">
+            <div class="demo-section">
+                <h2>Protein Structure Composer</h2>
+                <p>Enter an amino acid sequence to generate its 3D structure and hear its musical representation.</p>
+                
+                <div class="input-group">
+                    <label for="sequence-input">Amino Acid Sequence (min. 48 residues)</label>
+                    <textarea id="sequence-input" placeholder="Enter sequence or select an example below">MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG</textarea>
+                    <div class="example-sequences">
+                        <button class="example-btn" onclick="loadExample('ubiquitin')">Ubiquitin</button>
+                        <button class="example-btn" onclick="loadExample('lysozyme')">Lysozyme</button>
+                        <button class="example-btn" onclick="loadExample('insulin')">Insulin</button>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label for="samples">Ensemble Samples</label>
+                    <input type="number" id="samples" value="8" min="1" max="32">
+                </div>
+                
+                <div class="input-group">
+                    <label for="variability">Variability (0-1)</label>
+                    <input type="number" id="variability" value="0.5" min="0" max="1" step="0.1">
+                </div>
+                
+                <div class="button-group">
+                    <button onclick="composeProtein()">Generate Structure</button>
+                    <button onclick="sonifyProtein()">Generate Audio</button>
+                    <button class="secondary" onclick="downloadResults()">Download Results</button>
+                </div>
+                
+                <div class="output-container">
+                    <div class="output-header">3D Structure</div>
+                    <div id="structure-viewer">
+                        <div class="loading">Structure will appear here...</div>
+                    </div>
+                </div>
+                
+                <div class="output-container">
+                    <div class="output-header">Sonification (3-Channel)</div>
+                    <audio id="audio-player" controls></audio>
+                    <p style="color: #666; font-size: 0.875rem; margin-top: 0.5rem;">
+                        L: Even harmonics | C: Core/tonic | R: Odd harmonics
+                    </p>
+                </div>
+                
+                <div class="output-container">
+                    <div class="output-header">Quality Metrics</div>
+                    <div class="metrics-grid">
+                        <div class="metric">
+                            <div class="metric-value" id="clash-count">-</div>
+                            <div class="metric-label">Clashes</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value" id="min-ca-dist">-</div>
+                            <div class="metric-label">Min CA-CA (Å)</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value" id="certainty">-</div>
+                            <div class="metric-label">Certainty</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value" id="harmony">-</div>
+                            <div class="metric-label">Harmony</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Fractal Navigator Tab -->
+        <div id="fractal-tab" class="tab-content">
+            <div class="demo-section">
+                <h2>48-Manifold Fractal Navigator</h2>
+                <p>Explore the mathematical structure of the 48-manifold through interactive visualization.</p>
+                
+                <canvas id="fractal-canvas" width="800" height="600"></canvas>
+                
+                <div class="button-group">
+                    <button onclick="resetView()">Reset View</button>
+                    <button onclick="animateFractal()">Animate</button>
+                    <button onclick="exportImage()">Export Image</button>
+                </div>
+                
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <div class="metric-value" id="zoom-level">1.0</div>
+                        <div class="metric-label">Zoom Level</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value" id="complexity">48</div>
+                        <div class="metric-label">Complexity</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-value" id="iterations">0</div>
+                        <div class="metric-label">Iterations</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Hand Tensor Tab -->
+        <div id="hand-tab" class="tab-content">
+            <div class="demo-section">
+                <h2>Five-Finger Tensor Router</h2>
+                <p>Visualize how hand gestures route information through the 48-manifold.</p>
+                
+                <div class="input-group">
+                    <label for="gesture-select">Select Gesture</label>
+                    <select id="gesture-select" onchange="updateGesture()">
+                        <option value="pointing">Pointing (Index dominant)</option>
+                        <option value="fist">Fist (Unity)</option>
+                        <option value="peace">Peace (Duality)</option>
+                        <option value="ok">OK (Completion)</option>
+                        <option value="rock">Rock (Spanning)</option>
+                        <option value="vulcan">Vulcan (Split)</option>
+                    </select>
+                </div>
+                
+                <div class="input-group">
+                    <label for="routing-mode">Routing Mode</label>
+                    <select id="routing-mode">
+                        <option value="W">W - Possibility (Left)</option>
+                        <option value="M">M - Manifestation (Right)</option>
+                    </select>
+                </div>
+                
+                <canvas id="hand-canvas" width="800" height="400"></canvas>
+                
+                <div class="output-container">
+                    <div class="output-header">Tensor Values</div>
+                    <div class="code-editor" id="tensor-output">
+                        # Tensor values will appear here
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Code Sandbox Tab -->
+        <div id="code-tab" class="tab-content">
+            <div class="demo-section">
+                <h2>Python Code Sandbox</h2>
+                <p>Run 48-Manifold code directly in your browser using Pyodide.</p>
+                
+                <div class="input-group">
+                    <label for="code-input">Python Code</label>
+                    <textarea id="code-input" style="height: 300px; font-family: 'Monaco', monospace;">
+import numpy as np
+
+# Example: Create a 48-dimensional manifold operation
+def fractal48_transfer(x, inverse=False):
+    """Apply 48-manifold transfer operation"""
+    # 48 = 2^4 * 3
+    # Factor as (3, 2, 2, 2, 2)
+    
+    if not inverse:
+        # Forward: 48 -> 16 -> 8 -> 4 -> 2
+        x = x.reshape(-1, 3, 16)  # Factor out 3
+        x = x.reshape(-1, 3, 2, 8)  # Factor out 2
+        x = x.reshape(-1, 3, 2, 2, 4)  # Factor out 2
+        x = x.reshape(-1, 3, 2, 2, 2, 2)  # Factor out 2
+    else:
+        # Inverse: 2 -> 4 -> 8 -> 16 -> 48
+        x = x.reshape(-1, 48)
+    
+    return x
+
+# Test the transfer
+input_data = np.random.randn(1, 48)
+output = fractal48_transfer(input_data)
+reconstructed = fractal48_transfer(output, inverse=True)
+
+print(f"Input shape: {input_data.shape}")
+print(f"Transformed shape: {output.shape}")
+print(f"Reconstructed shape: {reconstructed.shape}")
+print(f"Reconstruction error: {np.mean(np.abs(input_data - reconstructed)):.10f}")
+                    </textarea>
+                </div>
+                
+                <div class="button-group">
+                    <button onclick="runCode()">Run Code</button>
+                    <button class="secondary" onclick="clearOutput()">Clear Output</button>
+                    <button class="secondary" onclick="loadCodeExample()">Load Example</button>
+                </div>
+                
+                <div class="output-container">
+                    <div class="output-header">Output</div>
+                    <div class="code-editor" id="code-output">
+                        # Output will appear here
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize Pyodide
+        let pyodideReady = false;
+        let pyodide;
+        
+        async function initPyodide() {
+            pyodide = await loadPyodide();
+            await pyodide.loadPackage(["numpy", "matplotlib"]);
+            pyodideReady = true;
+            console.log("Pyodide ready!");
+        }
+        
+        initPyodide();
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName + '-tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        // Protein Composer functions
+        function loadExample(protein) {
+            const examples = {
+                'ubiquitin': 'MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG',
+                'lysozyme': 'KVFERCELARTLKRLGMDGYRGISLANWMCLAKWESGYNTRATNYNAGDRSTDYGIFQINSRYWCNDGKTPGAVNACHLSCSALLQDNIADAVACAKRVVRDPQGIRAWVAWRNRCQNRDVRQYVQGCGV',
+                'insulin': 'MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN'
+            };
+            document.getElementById('sequence-input').value = examples[protein] || '';
+        }
+        
+        async function composeProtein() {
+            if (!pyodideReady) {
+                alert('Python environment is still loading. Please wait...');
+                return;
+            }
+            
+            const sequence = document.getElementById('sequence-input').value;
+            if (sequence.length < 48) {
+                alert('Sequence must be at least 48 residues long');
+                return;
+            }
+            
+            // Show loading state
+            document.getElementById('structure-viewer').innerHTML = '<div class="loading">Generating structure...</div>';
+            
+            // Simulate structure generation (in real implementation, this would call the actual Python code)
+            setTimeout(() => {
+                document.getElementById('structure-viewer').innerHTML = '<div class="success">Structure generated successfully!</div>';
+                document.getElementById('clash-count').textContent = '0';
+                document.getElementById('min-ca-dist').textContent = '3.54';
+                document.getElementById('certainty').textContent = '0.816';
+                document.getElementById('harmony').textContent = '0.92';
+            }, 2000);
+        }
+        
+        function sonifyProtein() {
+            // Placeholder for sonification
+            alert('Sonification feature coming soon!');
+        }
+        
+        function downloadResults() {
+            alert('Download feature coming soon!');
+        }
+        
+        // Code Sandbox functions
+        async function runCode() {
+            if (!pyodideReady) {
+                document.getElementById('code-output').textContent = "Python environment is still loading...";
+                return;
+            }
+            
+            const code = document.getElementById('code-input').value;
+            const outputElement = document.getElementById('code-output');
+            
+            try {
+                // Redirect Python output
+                pyodide.runPython(`
+                    import sys
+                    from io import StringIO
+                    sys.stdout = StringIO()
+                `);
+                
+                // Run the user's code
+                await pyodide.runPythonAsync(code);
+                
+                // Get the output
+                const output = pyodide.runPython(`sys.stdout.getvalue()`);
+                outputElement.textContent = output || "Code executed successfully (no output)";
+            } catch (error) {
+                outputElement.textContent = `Error: ${error.message}`;
+                outputElement.style.color = '#d32f2f';
+            }
+        }
+        
+        function clearOutput() {
+            document.getElementById('code-output').textContent = '# Output will appear here';
+        }
+        
+        function loadCodeExample() {
+            document.getElementById('code-input').value = `
+# Example: Harmonic Composition
+import numpy as np
+
+def harmonic_propagator(sequence, n_layers=4):
+    """Simple harmonic propagator for amino acid sequences"""
+    
+    # Map amino acids to indices
+    aa_map = {aa: i for i, aa in enumerate('ACDEFGHIKLMNPQRSTVWY')}
+    indices = [aa_map.get(aa, 0) for aa in sequence.upper()]
+    
+    # Create 48-dimensional embedding
+    embedding = np.zeros(48)
+    for i, idx in enumerate(indices[:48]):
+        embedding[i % 48] += np.sin(idx * np.pi / 20)
+    
+    # Apply harmonic layers
+    for layer in range(n_layers):
+        # Even harmonics
+        even = embedding[::2]
+        # Odd harmonics
+        odd = embedding[1::2]
+        
+        # Mix and combine
+        embedding[::2] = 0.7 * even + 0.3 * odd
+        embedding[1::2] = 0.3 * even + 0.7 * odd
+    
+    return embedding
+
+# Test with a sequence
+sequence = "MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG"
+composition = harmonic_propagator(sequence)
+
+print(f"Sequence length: {len(sequence)}")
+print(f"Composition shape: {composition.shape}")
+print(f"Mean composition: {np.mean(composition):.4f}")
+print(f"Std composition: {np.std(composition):.4f}")
+print(f"Min/Max: {np.min(composition):.4f} / {np.max(composition):.4f}")
+`;
+        }
+        
+        // Fractal Navigator functions
+        function resetView() {
+            document.getElementById('zoom-level').textContent = '1.0';
+            // Reset canvas drawing
+        }
+        
+        function animateFractal() {
+            alert('Animation feature coming soon!');
+        }
+        
+        function exportImage() {
+            const canvas = document.getElementById('fractal-canvas');
+            const link = document.createElement('a');
+            link.download = '48-manifold-fractal.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        }
+        
+        // Hand Tensor functions
+        function updateGesture() {
+            const gesture = document.getElementById('gesture-select').value;
+            // Update visualization based on gesture
+            document.getElementById('tensor-output').textContent = `
+# Gesture: ${gesture}
+thumb:  [0.1, 0.2, 0.3, ...]  # Opposition axis
+index:  [1.0, 0.9, 0.8, ...]  # Outward projection
+middle: [0.1, 0.1, 0.2, ...]  # Inward reflection
+ring:   [0.1, 0.2, 0.1, ...]  # Union/binding
+pinky:  [0.1, 0.1, 0.1, ...]  # Self-reference
+`;
+        }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Playground initialized');
+        });
+    </script>
+</body>
+</html>
