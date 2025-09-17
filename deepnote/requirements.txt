@@ -1,0 +1,62 @@
+# Deepnote Requirements for {wtf²B•2^4*3} Manifold Notebooks
+# Optimized for CUDA environments (T4/V100/A100)
+
+# Core dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+pandas>=2.0.0
+
+# GPU monitoring
+gputil>=1.4.0
+pynvml>=11.5.0
+psutil>=5.9.0
+
+# Visualization
+plotly>=5.14.0
+ipywidgets>=8.0.0
+ipyvolume>=0.6.0
+pythreejs>=2.4.0
+nglview>=3.0.0
+bokeh>=3.1.0
+altair>=5.0.0
+
+# Protein/molecular tools
+biopython>=1.81
+py3dmol>=2.0.0
+MDAnalysis>=2.5.0
+
+# Performance profiling
+line-profiler>=4.0.0
+memory-profiler>=0.61.0
+py-spy>=0.3.14
+
+# Notebook enhancements
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+ipykernel>=6.23.0
+nbformat>=5.9.0
+watermark>=2.4.0
+
+# Testing
+pytest>=7.3.0
+pytest-benchmark>=4.0.0
+hypothesis>=6.75.0
+
+# Utilities
+tqdm>=4.65.0
+rich>=13.3.0
+click>=8.1.0
+pyyaml>=6.0
+joblib>=1.3.0
+
+# Optional accelerations
+numba>=0.57.0
+cupy-cuda11x>=12.0.0  # For CUDA 11.x
+# cupy-cuda12x>=12.0.0  # For CUDA 12.x (A100)
+
+# Deepnote specific
+deepnote>=1.0.0
