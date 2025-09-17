@@ -1,0 +1,135 @@
+# Jekyll Configuration for {wtf²B•2^4*3} Manifold
+# A-G-I.space GitHub Pages Site
+
+title: "{wtf²B•2^4*3} Manifold"
+email: research@A-G-I.space
+description: >-
+  Revolutionary computational framework unifying mathematics, biology, 
+  and physics through reversible, on-lattice transfers. Where music 
+  becomes structure, structure becomes reality.
+
+baseurl: "" # the subpath of your site, e.g. /blog
+url: "https://A-G-I.space" # the base hostname & protocol for your site
+domain: A-G-I.space
+
+# Social media
+twitter_username: 48manifold
+github_username: I-m-A-g-I-n-E
+
+# Build settings
+theme: minima
+plugins:
+  - jekyll-feed
+  - jekyll-seo-tag
+  - jekyll-sitemap
+  - jekyll-redirect-from
+
+# Markdown settings
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    css_class: 'highlight'
+    span:
+      line_numbers: false
+    block:
+      line_numbers: true
+      start_line: 1
+
+# Collections for organizing content
+collections:
+  research:
+    output: true
+    permalink: /research/:name
+  applications:
+    output: true
+    permalink: /applications/:name
+  tutorials:
+    output: true
+    permalink: /tutorials/:name
+  team:
+    output: true
+    permalink: /team/:name
+
+# Default layouts
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
+      author: "48-Manifold Team"
+  - scope:
+      path: ""
+      type: "research"
+    values:
+      layout: "research"
+  - scope:
+      path: ""
+      type: "applications"
+    values:
+      layout: "application"
+
+# Exclude from processing
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor/bundle/
+  - vendor/cache/
+  - vendor/gems/
+  - vendor/ruby/
+  - "*.py"
+  - "*.pyc"
+  - "__pycache__"
+  - ".venv"
+  - "requirements.txt"
+  - "tests/"
+  - "outputs/"
+  - "*.pdb"
+  - "*.npy"
+  - "*.pt"
+  - "*.wav"
+  - ".pytest_cache"
+
+# Include specific files
+include:
+  - _pages
+  - assets
+  - docs
+
+# Pagination
+paginate: 10
+paginate_path: "/blog/page:num/"
+
+# SEO and Analytics
+google_analytics: UA-XXXXXXXXX-X
+author:
+  name: "48-Manifold Research Team"
+  url: "https://48manifold.org"
+
+# Custom variables for the site
+manifold:
+  dimensions: 48
+  factorization: "2^4 × 3"
+  applications:
+    - "Protein Structure Prediction"
+    - "Nuclear Fusion Control"
+    - "Reversible Machine Learning"
+    - "Molecular Sonification"
+  
+# Navigation menu
+navigation:
+  - title: Research
+    url: /research/
+  - title: Applications
+    url: /applications/
+  - title: Playground
+    url: /playground/
+  - title: Documentation
+    url: /docs/
+  - title: Team
+    url: /team/
+  - title: Blog
+    url: /blog/

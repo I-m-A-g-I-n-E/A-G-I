@@ -1,0 +1,218 @@
+<header class="site-header">
+    <nav class="navbar">
+        <div class="container">
+            <div class="navbar-content">
+                <a href="/" class="navbar-brand">
+                    <span class="brand-symbol">{{ site.data.manifold.short_name }}</span>
+                </a>
+                
+                <button class="navbar-toggle" id="navbar-toggle" aria-label="Toggle navigation">
+                    <span class="hamburger"></span>
+                    <span class="hamburger"></span>
+                    <span class="hamburger"></span>
+                </button>
+                
+                <div class="navbar-menu" id="navbar-menu">
+                    <ul class="navbar-nav">
+                        {% for item in site.navigation %}
+                        <li class="nav-item">
+                            <a href="{{ item.url }}" class="nav-link {% if page.url == item.url %}active{% endif %}">
+                                {{ item.title }}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    
+                    <div class="navbar-actions">
+                        <a href="{{ site.data.manifold.deepnote.workspace_url }}" class="btn btn-outline" target="_blank">
+                            Try Notebooks
+                        </a>
+                        <a href="https://github.com/{{ site.github_username }}" class="btn btn-primary" target="_blank">
+                            GitHub
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+</header>
+
+<style>
+.site-header {
+    background: var(--color-white);
+    box-shadow: var(--shadow-sm);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+}
+
+.navbar {
+    padding: var(--space-4) 0;
+}
+
+.navbar-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.navbar-brand {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-primary-800);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.brand-symbol {
+    font-family: var(--font-mono);
+    background: linear-gradient(135deg, var(--color-primary-600), var(--color-accent-500));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.navbar-toggle {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-2);
+}
+
+.hamburger {
+    width: 24px;
+    height: 2px;
+    background: var(--color-neutral-900);
+    transition: all var(--duration-fast) var(--ease-in-out);
+}
+
+.navbar-menu {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+}
+
+.navbar-nav {
+    display: flex;
+    list-style: none;
+    gap: var(--space-5);
+    margin: 0;
+    padding: 0;
+}
+
+.nav-link {
+    color: var(--color-neutral-700);
+    text-decoration: none;
+    font-weight: var(--font-weight-medium);
+    transition: color var(--duration-fast) var(--ease-in-out);
+    position: relative;
+}
+
+.nav-link:hover {
+    color: var(--color-primary-600);
+}
+
+.nav-link.active {
+    color: var(--color-primary-600);
+}
+
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--color-accent-500);
+}
+
+.navbar-actions {
+    display: flex;
+    gap: var(--space-3);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .navbar-toggle {
+        display: flex;
+    }
+    
+    .navbar-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: var(--color-white);
+        box-shadow: var(--shadow-lg);
+        padding: var(--space-4);
+        flex-direction: column;
+        gap: var(--space-4);
+    }
+    
+    .navbar-menu.active {
+        display: flex;
+    }
+    
+    .navbar-nav {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .nav-link {
+        padding: var(--space-2) 0;
+        display: block;
+    }
+    
+    .navbar-actions {
+        width: 100%;
+        flex-direction: column;
+    }
+    
+    .navbar-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    /* Hamburger animation */
+    .navbar-toggle.active .hamburger:nth-child(1) {
+        transform: rotate(45deg) translate(5px, 5px);
+    }
+    
+    .navbar-toggle.active .hamburger:nth-child(2) {
+        opacity: 0;
+    }
+    
+    .navbar-toggle.active .hamburger:nth-child(3) {
+        transform: rotate(-45deg) translate(5px, -5px);
+    }
+}
+</style>
+
+<script>
+// Mobile menu toggle
+document.addEventListener('DOMContentLoaded', function() {
+    const toggle = document.getElementById('navbar-toggle');
+    const menu = document.getElementById('navbar-menu');
+    
+    if (toggle && menu) {
+        toggle.addEventListener('click', function() {
+            menu.classList.toggle('active');
+            toggle.classList.toggle('active');
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!toggle.contains(event.target) && !menu.contains(event.target)) {
+                menu.classList.remove('active');
+                toggle.classList.remove('active');
+            }
+        });
+    }
+});
+</script>
