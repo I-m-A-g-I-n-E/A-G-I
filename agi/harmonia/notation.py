@@ -34,7 +34,7 @@ class Turn:
         return Phase48(tick, micro, self.hand)
 
     @property
-    def fractal_complexity(self) -> float:
+    def fractal_complexity(self) -> float: # (2^4*3)
         """The cost to reality, which penalizes unnatural inversion.
 
         - Grid affinity: cheaper if representable with small-denominator fractions on 48-tick lattice
