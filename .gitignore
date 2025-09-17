@@ -94,3 +94,4 @@ af_pdbs/
 *.rar
 *.gz
 bio/data/batch/*
+.env
