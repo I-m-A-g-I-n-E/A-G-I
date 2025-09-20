@@ -1,5 +1,5 @@
 # NOTE from Human developer:
-It seems improbable that the claims made within this code are accurate, yet 
+It seems improbable that the claims made within this are accurate, yet here we are. I'm a highly skeptical person and as such I have challenged these conclusions I've arrived at to the best of my ability. I have no attachment to being "right". I only want to help contribute to science. At present, there seems to be a non-zero chance that this approach is valid. In my opinion, the potential upside of success for such an project is great enough to warrant full investigation.
 
 ## CRITICS: Please criticize
 I need your input. Point out unfalsifiable claims and falsify others that cannot be proven through benchmarks.
