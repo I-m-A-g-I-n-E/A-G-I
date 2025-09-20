@@ -10,7 +10,7 @@ import time
 from .config import FractalConfig
 from .crt import crt_phase48, phi_field, keven_kodd_mask, iters_for_phi
 from .kernels import mandelbrot, julia, newton3, cphi, smooth_escape_time
-from .color import palette48, palette_newton, apply_smooth_coloring
+from .color import palette48, palette_newton, apply_smooth_coloring, palette48_vectorized, palette_newton_vectorized, apply_smooth_coloring_vectorized
 from .perms import apply_perm_for_frame
 
 # Import Numba kernels with fallback
@@ -77,44 +77,33 @@ def _render_mandelbrot(complex_coords: np.ndarray, phi_map: np.ndarray,
         # Compute all pixels at once with parallel Numba
         iters_result, zr_final, zi_final = mandelbrot_numba(c_real, c_imag, iters_map, bailout2)
         
-        # Apply coloring in vectorized fashion
-        for y in range(H):
-            for x in range(W):
-                n = iters_result[y, x]
-                zr, zi = zr_final[y, x], zi_final[y, x]
-                z = complex(zr, zi)
-                phi = phi_map[y, x]
-                parity = int(parity_map[y, x])
-                
-                # Apply smooth coloring
-                n_smooth = apply_smooth_coloring(n, z, config)
-                
-                # Generate color with parity gating
-                r, g, b = palette48(n_smooth, phi, parity, config)
-                img[y, x] = [r, g, b]
+        # Apply vectorized coloring - no per-pixel loops!
+        n_smooth = apply_smooth_coloring_vectorized(iters_result, zr_final, zi_final, config)
+        img = palette48_vectorized(n_smooth, phi_map, parity_map, config)
                 
     elif config.backend == "numba" and not NUMBA_AVAILABLE:
         raise ImportError("Numba backend requested but numba is not available. Install numba>=0.56.0 or use numpy backend.")
     else:
-        # Use original NumPy backend
+        # Use original NumPy backend with vectorized coloring
+        # Compute fractal data for all pixels
+        iters_result = np.zeros((H, W), dtype=np.int32)
+        zr_final = np.zeros((H, W), dtype=np.float32)
+        zi_final = np.zeros((H, W), dtype=np.float32)
+        
         for y in range(H):
             for x in range(W):
                 c = complex_coords[y, x]
-                phi = phi_map[y, x]
-                parity = int(parity_map[y, x])
-                
-                # Use cached iterations based on phi
                 iters = iters_map[y, x]
                 
                 # Compute Mandelbrot iteration
                 n, z = mandelbrot(c, iters, config.bailout)
-                
-                # Apply smooth coloring
-                n_smooth = apply_smooth_coloring(n, z, config)
-                
-                # Generate color with parity gating
-                r, g, b = palette48(n_smooth, phi, parity, config)
-                img[y, x] = [r, g, b]
+                iters_result[y, x] = n
+                zr_final[y, x] = np.real(z)
+                zi_final[y, x] = np.imag(z)
+        
+        # Apply vectorized coloring - no per-pixel color loops!
+        n_smooth = apply_smooth_coloring_vectorized(iters_result, zr_final, zi_final, config)
+        img = palette48_vectorized(n_smooth, phi_map, parity_map, config)
     
     return img
 
@@ -150,34 +139,27 @@ def _render_julia(complex_coords: np.ndarray, phi_map: np.ndarray,
         # Compute all pixels at once with parallel Numba
         iters_result, zr_final, zi_final = julia_numba(z0_real, z0_imag, c_real, c_imag, iters_map, bailout2)
         
-        # Apply coloring in vectorized fashion
-        for y in range(H):
-            for x in range(W):
-                n = iters_result[y, x]
-                zr, zi = zr_final[y, x], zi_final[y, x]
-                z = complex(zr, zi)
-                phi = phi_map[y, x]
-                parity = int(parity_map[y, x])
-                
-                # Apply smooth coloring
-                n_smooth = apply_smooth_coloring(n, z, config)
-                
-                # Generate color with parity gating
-                r, g, b = palette48(n_smooth, phi, parity, config)
-                img[y, x] = [r, g, b]
+        # Apply vectorized coloring - no per-pixel loops!
+        n_smooth = apply_smooth_coloring_vectorized(iters_result, zr_final, zi_final, config)
+        img = palette48_vectorized(n_smooth, phi_map, parity_map, config)
                 
     elif config.backend == "numba" and not NUMBA_AVAILABLE:
         raise ImportError("Numba backend requested but numba is not available. Install numba>=0.56.0 or use numpy backend.")
     else:
-        # Use original NumPy backend
+        # Use original NumPy backend with vectorized coloring
+        # Compute fractal data for all pixels
+        iters_result = np.zeros((H, W), dtype=np.int32)
+        zr_final = np.zeros((H, W), dtype=np.float32)
+        zi_final = np.zeros((H, W), dtype=np.float32)
+        
+        frame_theta = 2 * math.pi * frame_idx / config.loop_frames
+        
         for y in range(H):
             for x in range(W):
                 z0 = complex_coords[y, x]
                 phi = phi_map[y, x]
-                parity = int(parity_map[y, x])
                 
                 # Julia constant varies with phi and frame
-                frame_theta = 2 * math.pi * frame_idx / config.loop_frames
                 c = cphi(phi, config.julia_r, config.julia_theta + frame_theta)
                 
                 # Use cached iterations based on phi
@@ -185,13 +167,13 @@ def _render_julia(complex_coords: np.ndarray, phi_map: np.ndarray,
                 
                 # Compute Julia iteration
                 n, z = julia(z0, c, iters, config.bailout)
-                
-                # Apply smooth coloring
-                n_smooth = apply_smooth_coloring(n, z, config)
-                
-                # Generate color with parity gating
-                r, g, b = palette48(n_smooth, phi, parity, config)
-                img[y, x] = [r, g, b]
+                iters_result[y, x] = n
+                zr_final[y, x] = np.real(z)
+                zi_final[y, x] = np.imag(z)
+        
+        # Apply vectorized coloring - no per-pixel color loops!
+        n_smooth = apply_smooth_coloring_vectorized(iters_result, zr_final, zi_final, config)
+        img = palette48_vectorized(n_smooth, phi_map, parity_map, config)
     
     return img
 
@@ -215,37 +197,31 @@ def _render_newton(complex_coords: np.ndarray, phi_map: np.ndarray,
         # Compute all pixels at once with parallel Numba
         steps_result, basin_result = newton3_numba(z0_real, z0_imag, iters_map, eps=1e-6)
         
-        # Apply coloring in vectorized fashion
-        for y in range(H):
-            for x in range(W):
-                steps = steps_result[y, x]
-                basin = basin_result[y, x]
-                phi = phi_map[y, x]
-                parity = int(parity_map[y, x])
-                
-                # Generate color based on basin and convergence
-                r, g, b = palette_newton(basin, steps, phi, parity, config)
-                img[y, x] = [r, g, b]
+        # Apply vectorized coloring - no per-pixel loops!
+        img = palette_newton_vectorized(basin_result, steps_result, phi_map, parity_map, config)
                 
     elif config.backend == "numba" and not NUMBA_AVAILABLE:
         raise ImportError("Numba backend requested but numba is not available. Install numba>=0.56.0 or use numpy backend.")
     else:
-        # Use original NumPy backend
+        # Use original NumPy backend with vectorized coloring
+        # Compute fractal data for all pixels
+        steps_result = np.zeros((H, W), dtype=np.int32)
+        basin_result = np.zeros((H, W), dtype=np.int32)
+        
         for y in range(H):
             for x in range(W):
                 z0 = complex_coords[y, x]
-                phi = phi_map[y, x]
-                parity = int(parity_map[y, x])
                 
                 # Use cached iterations based on phi
                 iters = iters_map[y, x]
                 
                 # Compute Newton iteration
                 steps, basin = newton3(z0, iters, eps=1e-6)
-                
-                # Generate color based on basin and convergence
-                r, g, b = palette_newton(basin, steps, phi, parity, config)
-                img[y, x] = [r, g, b]
+                steps_result[y, x] = steps
+                basin_result[y, x] = basin
+        
+        # Apply vectorized coloring - no per-pixel color loops!
+        img = palette_newton_vectorized(basin_result, steps_result, phi_map, parity_map, config)
     
     return img
 
