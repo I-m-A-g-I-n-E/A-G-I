@@ -10,7 +10,7 @@ This directory contains experimental research modules that explore advanced aspe
 
 - **`human.py`** - 48-Manifold Linguistic State Machine
   - Combines fractal reversibility with alphabetic resonance
-  - Maps words to taste/experience through letter resonance
+  - Analyzes words by mapping each letter to a resonance value and aggregates these to compute a linguistic state or classification
   - Special focus on W (possibility routing) and M (reality manifestation)
 
 - **`fractal_container.py`** - Container-based fractal implementations
