@@ -72,8 +72,7 @@ Our CLA ensures:
 
 ### CLA Bot Commands
 
-The CLA bot responds to these commands in PR comments:
-- `@cla-bot check` - Check current CLA status
+The CLA bot responds to this command in PR comments:
 - `@cla-bot recheck` - Re-verify CLA signature
 
 ## 🧪 Types of Contributions We Welcome
