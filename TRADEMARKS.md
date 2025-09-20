@@ -309,7 +309,7 @@ This trademark policy balances:
 
 **Remember**: When in doubt, ask! We prefer proactive communication over post-hoc enforcement.
 
-**Last Updated**: [Date]  
+**Last Updated**: 2024-06-11  
 **Version**: 1.0
 
 For trademark questions or permission requests, please use the contact methods outlined above.
