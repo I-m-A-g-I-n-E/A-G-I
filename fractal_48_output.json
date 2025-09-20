@@ -1,0 +1,74 @@
+{
+  "version": "0.1.0",
+  "timestamp": "2025-09-20T09:47:13.553686Z",
+  "render_time_seconds": 9.603312969207764,
+  "git": {
+    "commit": "c42712b883f1763a143e009ccc3b2e47ddfbe078",
+    "branch": "copilot/fix-9",
+    "clean": true,
+    "status": null
+  },
+  "config": {
+    "width": 480,
+    "height": 288,
+    "kernel": "mandelbrot",
+    "center": [
+      -0.75,
+      0.0
+    ],
+    "scale": 600.0,
+    "rotation": 0.0,
+    "max_iters": 100,
+    "bailout": 4.0,
+    "julia_r": 0.4,
+    "julia_theta": 0.0,
+    "palette_mode": "smooth",
+    "base_hue": 210.0,
+    "delta_s": 0.05,
+    "delta_l": 0.04,
+    "animate": false,
+    "loop_frames": 48,
+    "output_path": "fractal_48_output"
+  },
+  "manifold": {
+    "dimension": 48,
+    "factorization": "48 = 2^4 × 3 = 16 × 3",
+    "crt_mapping": "phi = (x mod 16) * 3 + (y mod 3)",
+    "parity_mapping": "p = (x + y) mod 2",
+    "phase_scheduler": "48-phase CRT",
+    "permutation_schedule": "P(f) = (S2)^{f mod 4} ∘ (S3)^{f mod 3}"
+  },
+  "operations": {
+    "space_to_depth_2": "applied for S2 permutations",
+    "space_to_depth_3": "applied for S3 permutations",
+    "measurement_first": true,
+    "reversible_permutations": false,
+    "color_space": "HSL → sRGB with gamma 2.2",
+    "smooth_coloring": true
+  },
+  "frames": [
+    {
+      "frame": 0,
+      "checksum": "bcd06726e08c9e07",
+      "shape": [
+        288,
+        480,
+        3
+      ],
+      "dtype": "float32"
+    }
+  ],
+  "performance": {
+    "total_pixels": 138240,
+    "pixels_per_frame": 138240,
+    "total_frames": 1,
+    "pixels_per_second": 14395.03226056
+  },
+  "performance_mode": {
+    "enabled": true,
+    "png_only": true,
+    "no_gif": false,
+    "no_mp4": false,
+    "checksum_policy": "first"
+  }
+}
