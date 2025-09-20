@@ -102,3 +102,14 @@ bio/data/batch/*
 .env
 newton_basins.json
 newton_basins.png
+
+# ---- CLA and Licensing Artifacts ----
+cla-signatures/
+.cla-signatures/
+*.cla
+*.signed
+license-check-results.txt
+dependency-licenses.json
+legal-review/
+legal-drafts/
+*.legal-draft
