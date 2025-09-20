@@ -332,7 +332,7 @@ The A-G-I project governance prioritizes:
 
 This governance model enables the project to advance cutting-edge research while maintaining commercial control and strategic flexibility.
 
-**Last Updated**: [Date]  
+**Last Updated**: 2025-09-20  
 **Version**: 1.0
 
 For governance questions or suggestions, please create an issue with the "governance" label.
