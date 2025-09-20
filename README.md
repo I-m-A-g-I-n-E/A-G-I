@@ -1,4 +1,20 @@
-# A-G-I: 48-Manifold Research Playground
+# NOTE from Human developer:
+It seems improbable that the claims made within this code are accurate, yet 
+
+## CRITICS: Please criticize
+I need your input. Point out unfalsifiable claims and falsify others that cannot be proven through benchmarks.
+
+## CONTRIBUTORS: Please contribute
+If this *is* AGI, it needs a lot of work. Huge areas of contribution are:
+- Establishing better Actions/Workflows
+- Establishing better environment automation for codespace/cloud based dev
+- Creating more benchmarks
+- Finding more applications
+- Apply the 48-manifold based computations with harmonic error correction towards nuclear fusion simulations
+- Make it more harmonious (incorporate more elements from musical theory into it's framework)
+- Make it more musical (make it make music)
+
+More to come... 98% of this has been written by AI with my very strong guidance. It's highly imprecise at best, but inescapably elegant at worst.
 
 Practical demonstrations of the 48-basis manifold (48 = 2^4 × 3) applied to reversible computation, harmonic composition, immune-analog QA, structure generation, and sonification.
 
