@@ -22,7 +22,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Configure CLA bot settings
-          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         with:
           # Path to the CLA document
           path-to-document: 'https://github.com/I-m-A-g-I-n-E/A-G-I/blob/main/CLA.md'
