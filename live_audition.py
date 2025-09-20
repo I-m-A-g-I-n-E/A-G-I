@@ -4,7 +4,7 @@ Live Audition — interactive duet loop to compose, conduct/refine, and sonify.
 
 Minimal dependency on existing pipeline artifacts:
 - Loads ensemble mean and certainty from --input-prefix *_mean.npy / *_certainty.npy if present
-- Otherwise, attempts to run `compose_protein.py` to generate them
+- Otherwise, attempts to run `scripts/compose_protein.py` to generate them
 - Invokes Conductor to build backbone (+ optional refine)
 - Sonifies composition into 3 stems (L/C/R)
 
@@ -40,10 +40,10 @@ def ensure_ensemble(prefix: str) -> tuple[torch.Tensor, torch.Tensor]:
         mean, cert = load_ensemble(prefix)
         return mean.to(torch.float32), cert.to(torch.float32)
     except Exception:
-        # Fallback: run compose_protein.py for a quick ensemble
-        print("[live] Ensemble files not found; running compose_protein.py to generate...")
+        # Fallback: run scripts/compose_protein.py for a quick ensemble
+        print("[live] Ensemble files not found; running scripts/compose_protein.py to generate...")
         cmd = [
-            "python3", "compose_protein.py",
+            "python3", "scripts/compose_protein.py",
             "--samples", "10",
             "--variability", "0.5",
             "--seed", "42",
