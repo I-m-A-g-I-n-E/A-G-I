@@ -68,7 +68,7 @@ For the most current license information, always refer to the official package r
 
 ---
 
-**Last Updated**: [Date]  
+**Last Updated**: 2024-06-10  
 **Maintained By**: A-G-I Project Maintainers
 
 For questions about license compliance, please create an issue with the "license" label.
