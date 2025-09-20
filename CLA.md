@@ -115,7 +115,7 @@ If you have questions about this CLA:
 ---
 
 **Version**: 1.0  
-**Effective Date**: 2024-06-01  
-**Last Updated**: 2024-06-01
+**Effective Date**: 2025-09-20  
+**Last Updated**: 2025-09-20
 
 By contributing to this Project, you acknowledge that you have read, understood, and agree to be bound by this CLA.
