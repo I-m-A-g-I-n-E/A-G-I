@@ -47,6 +47,8 @@ def cli():
 @click.option('--animate/--no-animate', default=False, help='Generate 48-frame animation')
 @click.option('--out', type=str, default='fractal_48_output', help='Output path (without extension)')
 @click.option('--benchmark/--no-benchmark', default=False, help='Run performance benchmark')
+@click.option('--backend', type=click.Choice(['numpy', 'numba']), default='numpy',
+              help='Computation backend: numpy (default) or numba (JIT-compiled, faster)')
 # Performance flags
 @click.option('--png-only', is_flag=True, help='Export PNG only (skip GIF/MP4)')
 @click.option('--no-gif', is_flag=True, help='Skip GIF export')  
@@ -57,7 +59,7 @@ def render(kernel: str, width: int, height: int, center: Tuple[float, float],
           scale: float, rotation: float, iters: int, bailout: float,
           julia_r: float, julia_theta: float, palette: str, base_hue: float,
           delta_s: float, delta_l: float, animate: bool, out: str, benchmark: bool,
-          png_only: bool, no_gif: bool, no_mp4: bool, checksum: str):
+          backend: str, png_only: bool, no_gif: bool, no_mp4: bool, checksum: str):
     """Render fractal with specified parameters."""
     
     try:
@@ -78,11 +80,13 @@ def render(kernel: str, width: int, height: int, center: Tuple[float, float],
             delta_s=delta_s,
             delta_l=delta_l,
             animate=animate,
+            backend=backend,
             output_path=out
         )
         
         click.echo(f"Rendering {kernel} fractal at {width}×{height}")
         click.echo(f"Center: {center}, Scale: {scale}")
+        click.echo(f"Backend: {backend}")
         if animate:
             click.echo(f"Animation: {config.loop_frames} frames")
         

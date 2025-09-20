@@ -168,11 +168,33 @@ python -m fractal_48.cli from-json output.json --verify
 
 ## Performance
 
-Typical performance on modern hardware:
+The fractal renderer supports two computational backends:
 
-- **1920×1152 Mandelbrot**: ~1-2s per frame
-- **48-frame animation**: ~2-3 minutes
-- **960×576 test render**: ~0.2-0.5s per frame
+### NumPy Backend (Default)
+- Pure NumPy implementation 
+- Compatible with all Python environments
+- Single-threaded performance
+
+### Numba Backend (Recommended)
+- JIT-compiled parallel implementation
+- **2-7x faster** than NumPy backend
+- Utilizes multiple CPU cores
+- Requires `numba>=0.56.0`
+
+To use the Numba backend:
+```bash
+# Install numba if not already installed
+pip install numba>=0.56.0
+
+# Use --backend numba flag
+python -m fractal_48.cli render --backend numba --kernel mandelbrot ...
+```
+
+Typical performance with Numba backend on modern hardware:
+
+- **1920×1152 Mandelbrot**: ~0.3-0.6s per frame
+- **48-frame animation**: ~30-60 seconds  
+- **960×576 test render**: ~0.05-0.1s per frame
 
 Use `--benchmark` to measure performance on your system.
 

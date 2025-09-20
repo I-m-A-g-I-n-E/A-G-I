@@ -42,6 +42,9 @@ class FractalConfig:
     # Output parameters
     output_path: str = "fractal_48_output"
     
+    # Backend selection
+    backend: str = "numpy"  # "numpy" or "numba"
+    
     # Performance cache (not user-configurable)
     _cache: Optional[Dict[str, Any]] = None
     
@@ -54,6 +57,9 @@ class FractalConfig:
         
         if self.kernel not in ["mandelbrot", "julia", "newton"]:
             raise ValueError(f"Unknown kernel: {self.kernel}")
+        
+        if self.backend not in ["numpy", "numba"]:
+            raise ValueError(f"Unknown backend: {self.backend}")
         
         if self.loop_frames != 48:
             raise ValueError(f"Loop frames must be 48, got {self.loop_frames}")

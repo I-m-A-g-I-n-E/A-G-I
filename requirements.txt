@@ -5,3 +5,4 @@ jupyterlab
 click
 scipy
 tmtools
+numba>=0.56.0

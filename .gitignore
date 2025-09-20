@@ -73,6 +73,11 @@ af_pdbs/
 *.chat.html
 *.chat.md
 
+# ---- Fractal-48 outputs ----
+fractal_48_output.*
+test_*.png
+test_*.json
+
 # ---- Media (audio) outputs ----
 *.wav
 *.mp3
