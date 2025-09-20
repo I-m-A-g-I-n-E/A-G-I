@@ -8,6 +8,9 @@ Subcommands:
 - sonify: Sonify a composition prefix into a single 3-channel WAV.
 
 This CLI wraps the pipeline in bio/pipeline.py and does not break existing scripts.
+
+NOTE: This module is planned to be moved to agi/cli/ in a future reorganization
+for better alignment with the target structure in bio/HANDOFF.md.
 """
 from __future__ import annotations
 

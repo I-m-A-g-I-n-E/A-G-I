@@ -80,22 +80,32 @@ Recommendations:
 
 ## Project layout (selected)
 
+**Core Framework:**
 - `manifold.py` — Core 48-manifold primitives: `Fractal48Layer`, `KEven/KOdd/kull`, `SixAxisState`.
 - `main.py` — Minimal algebraic demo (`Fractal48Transfer`) showing invertible steps and coupling.
 - `fractal48_torch.py` — Full PyTorch autoencoder, benchmarks, and examples.
+- `agi/core/` — Core 48-manifold laws and constants (target structure).
+- `agi/harmonia/` — Notation, gesture definitions, and measurement utilities.
+- `agi/metro/` — Validation and sanity checking utilities.
+
+**Biological Applications:**
 - `bio/composer.py` — `HarmonicPropagator`: map an AA sequence to windowed 48D Composition Vectors.
 - `bio/conductor.py` — `Conductor`: map composition to torsions, build N–CA–C backbone, QC, and refinement.
 - `bio/sonifier.py` — `TrinitySonifier`: 3-channel audio from composition (L/R parity, C center/kore).
-- `scripts/compose_protein.py` — CLI for ensemble composition and saving mean/certainty.
-- `scripts/generate_structure.py` — CLI for backbone generation (+ optional refinement + optional sonification).
+
+**Command Line & Interactive Tools:**
+- `agi.py` — Unified CLI for compose/structure/sonify workflow.
+- `scripts/` — CLI tools for protein composition, structure generation, and batch processing.
 - `live_audition.py` — Interactive loop to compose/conduct/refine/sonify.
 - `immunity.py` — Immune-system analog, CLI demos for synthetic and real PDB QA.
-- `scripts/` — CLI tools for protein composition, structure generation, and batch processing.
+
+**Development & Documentation:**
 - `tests/` — See `test_fractal48.py`, `test_immunity_unit.py`, `test_immunity_randomized.py` for properties and robustness.
 - `docs/` — Documentation, proposals, research notes, and web assets.
 - `demos/` — Demonstration scripts for fractal visualization and navigation.
 - `tools/` — Analysis utilities for metrics and batch processing.
 - `experimental/` — Research modules exploring gesture-based computing and linguistic processing.
+- `data/` — Reference data files and lists.
 
 ## Quick starts
 
