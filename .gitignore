@@ -100,3 +100,5 @@ test_*.json
 *.gz
 bio/data/batch/*
 .env
+newton_basins.json
+newton_basins.png
