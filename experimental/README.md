@@ -4,9 +4,9 @@ This directory contains experimental research modules that explore advanced aspe
 
 ## Modules
 
-- **`hand.py`** - The Hand Tensor: Five-finger routing through the 48-manifold
-  - Explores gesture-based computation where physical gesture becomes computational reality
-  - Each finger represents a distinct tensor channel with specific semantic meaning
+- **`hand.py`** - Implements the HandTensor and FingerChannel classes for gesture-based computation
+  - Provides data structures to model a hand as a tensor with five channels, each corresponding to a finger
+  - Each FingerChannel represents a separate computational pathway, allowing for parallel processing or routing of data through the HandTensor
 
 - **`human.py`** - 48-Manifold Linguistic State Machine
   - Combines fractal reversibility with alphabetic resonance
