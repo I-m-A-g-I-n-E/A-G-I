@@ -341,4 +341,18 @@ print(y.shape)
 
 ## License
 
-Research code. No license specified; treat as all rights reserved unless otherwise stated.
+This project is licensed under the **A-G-I Source-Available Protective License (SAPL) v1.0**.
+
+**Key Points:**
+- ✅ **Research and Evaluation**: Freely permitted with proper attribution
+- ❌ **Commercial Use**: Requires separate commercial license  
+- ❌ **Hosting/SaaS**: Requires explicit permission
+- 📋 **Contributions**: Contributor License Agreement (CLA) required
+
+**For Researchers**: You may use this software for academic research, education, and evaluation. Please include proper attribution.
+
+**For Commercial Use**: Contact us for commercial licensing options including SaaS, OEM, and enterprise deployments.
+
+**For Contributors**: Please review our [Contributing Guide](CONTRIBUTING.md) and [Contributor License Agreement (CLA)](CLA.md).
+
+See [LICENSE](LICENSE) for complete terms and [NOTICES](NOTICES) for attribution requirements.

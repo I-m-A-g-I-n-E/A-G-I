@@ -1,0 +1,227 @@
+A-G-I Project - Copyright and Attribution Notices
+
+================================================================================
+
+A-G-I: Universal Semantic Kernel (USK) and Harmonic Integrity Protocol
+Copyright (c) 2025 I-m-A-g-I-n-E and contributors
+All rights reserved except as expressly granted under the A-G-I SAPL v1.0.
+
+This software and associated documentation are licensed under the 
+A-G-I Source-Available Protective License (SAPL) v1.0.
+See LICENSE file for complete license terms.
+
+Repository: https://github.com/I-m-A-g-I-n-E/A-G-I
+Project: 48-Manifold Universal Semantic Kernel (USK)
+
+================================================================================
+
+ATTRIBUTION REQUIREMENTS
+
+When using this software, you must include:
+
+1. This copyright notice
+2. Attribution to "I-m-A-g-I-n-E A-G-I Project"
+3. Link to the original repository: https://github.com/I-m-A-g-I-n-E/A-G-I
+4. Notice that the software is subject to the A-G-I SAPL license
+
+Example attribution:
+"Powered by I-m-A-g-I-n-E A-G-I Project (https://github.com/I-m-A-g-I-n-E/A-G-I),
+licensed under the A-G-I Source-Available Protective License (SAPL)."
+
+================================================================================
+
+CORE CONTRIBUTORS
+
+I-m-A-g-I-n-E Organization
+- Project conception, architecture, and leadership
+- 48-manifold mathematical foundation development
+- Universal Semantic Kernel (USK) design and implementation
+- Harmonic Integrity Protocol specification
+- Source-Available Protective License (SAPL) creation
+
+[Additional contributors will be listed here as the project grows]
+
+================================================================================
+
+RESEARCH FOUNDATIONS
+
+This project builds upon fundamental research in:
+
+Mathematical Foundations:
+- 48-manifold structure (2^4 × 3 factorization)
+- Chinese Remainder Theorem (CRT) indexing
+- Harmonic analysis and reversible transformations
+- Unitary and orthogonal matrix operations
+
+Biological Modeling:
+- Protein folding and structure prediction
+- Immune system analog modeling
+- Molecular dynamics and conformational analysis
+
+Computational Theory:
+- Reversible computation principles
+- Information-preserving transformations
+- Measurement-first evaluation paradigms
+- Transfer vs. transform methodologies
+
+================================================================================
+
+THIRD-PARTY DEPENDENCIES
+
+This project uses the following third-party libraries and components:
+
+Python Standard Library
+- Licensed under Python Software Foundation License
+- Copyright (c) Python Software Foundation
+
+NumPy
+- Licensed under BSD 3-Clause License
+- Copyright (c) 2005-2023, NumPy Developers
+
+PyTorch
+- Licensed under BSD 3-Clause License
+- Copyright (c) 2016-2023 Facebook, Inc. (Meta Platforms, Inc.)
+
+Matplotlib
+- Licensed under PSF-based license
+- Copyright (c) 2012-2023 Matplotlib Development Team
+
+SciPy
+- Licensed under BSD 3-Clause License
+- Copyright (c) 2001-2023 SciPy Developers
+
+Click
+- Licensed under BSD 3-Clause License
+- Copyright (c) 2014 Pallets
+
+JupyterLab
+- Licensed under BSD 3-Clause License
+- Copyright (c) Jupyter Development Team
+
+tmtools
+- Licensed under Apache License 2.0
+- Copyright (c) tmtools contributors
+
+Numba
+- Licensed under BSD 2-Clause License
+- Copyright (c) 2012-2023 Anaconda, Inc. and contributors
+
+[Complete dependency licenses are available in the LICENSES/ directory]
+
+================================================================================
+
+INTELLECTUAL PROPERTY NOTICES
+
+Patents:
+- Patent applications may be filed for core innovations
+- Defensive patent strategy employed
+- See LICENSE file for patent grant terms
+
+Trademarks:
+- "A-G-I", "Universal Semantic Kernel", "USK", "Harmonic Integrity Protocol"
+- "I-m-A-g-I-n-E", "48-Manifold", "Transfer, Not Transform"
+- See TRADEMARKS.md for usage guidelines
+
+Trade Secrets:
+- Commercial licensing strategies and customer information
+- Future development roadmaps and business plans
+- Proprietary optimization techniques and algorithms
+
+================================================================================
+
+EXPORT CONTROL AND COMPLIANCE
+
+This software may be subject to export control regulations in various 
+jurisdictions. Users are responsible for compliance with applicable laws.
+
+Research Use:
+- Generally permitted for academic and scientific research
+- Educational use encouraged with proper attribution
+
+Commercial Use:
+- Requires separate commercial license
+- Export compliance verification may be required
+- Contact project maintainers for commercial licensing
+
+Prohibited Uses:
+- Autonomous weapons systems
+- Mass surveillance applications  
+- Unlawful biological or chemical engineering
+- Any use violating applicable laws or regulations
+
+================================================================================
+
+LEGAL DISCLAIMERS
+
+Warranty Disclaimer:
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+Limitation of Liability:
+IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY 
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT 
+OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR 
+THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Research Disclaimer:
+This software is research code. Claims about performance, accuracy, or 
+capabilities are preliminary and subject to ongoing validation. Users should 
+independently verify results and suitability for their specific applications.
+
+================================================================================
+
+CONTRIBUTION ACKNOWLEDGMENTS
+
+All contributors must sign the Contributor License Agreement (CLA) before 
+their contributions can be accepted. By contributing, contributors grant 
+broad rights to the project including the right to relicense under various 
+terms as needed for commercial and open-source distribution.
+
+Contribution Guidelines:
+- See CONTRIBUTING.md for detailed contribution process
+- All contributions subject to code review and testing
+- Technical contributions must maintain 48-manifold integrity
+- Documentation contributions must be accurate and clear
+
+================================================================================
+
+CONTACT INFORMATION
+
+Project Repository: https://github.com/I-m-A-g-I-n-E/A-G-I
+
+For licensing questions: See LICENSE file for contact information
+For trademark questions: See TRADEMARKS.md
+For contributions: See CONTRIBUTING.md
+For security issues: See SECURITY.md
+For general questions: Create GitHub issue or discussion
+
+================================================================================
+
+VERSION INFORMATION
+
+Notice Version: 1.0
+Last Updated: [Date]
+License Version: A-G-I SAPL v1.0
+Project Version: [Current Version]
+
+This notices file will be updated as the project evolves. Users should 
+periodically check for updates to ensure compliance with current terms.
+
+================================================================================
+
+RESEARCH CITATIONS
+
+If you use this software in academic research, please cite:
+
+[Formal citation format will be provided when research papers are published]
+
+Preliminary citation:
+I-m-A-g-I-n-E. "A-G-I: 48-Manifold Universal Semantic Kernel and Harmonic 
+Integrity Protocol." GitHub repository, 2025. 
+https://github.com/I-m-A-g-I-n-E/A-G-I
+
+================================================================================
+
+This file contains important legal and attribution information. 
+Please read carefully and ensure compliance with all requirements.

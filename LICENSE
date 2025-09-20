@@ -1,0 +1,117 @@
+A-G-I Source-Available Protective License (SAPL)
+Version 1.0
+
+Copyright (c) 2025 I-m-A-g-I-n-E and contributors
+All rights reserved.
+
+TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+"License" means this A-G-I Source-Available Protective License.
+
+"Software" means the A-G-I repository and all associated source code, documentation, assets, and materials, including the 48-manifold Universal Semantic Kernel (USK) and Harmonic Integrity Protocol implementations.
+
+"Licensee" means any individual or entity exercising permissions under this License.
+
+"Commercial Use" means any use of the Software that is primarily intended for or directed toward commercial advantage or monetary compensation, including but not limited to offering the Software as a service, incorporating the Software into a commercial product, or using the Software to provide services to third parties for compensation.
+
+"Competitive Use" means any use of the Software to develop, operate, or provide products or services that compete with the original licensor's commercial offerings.
+
+"Hosting Use" means making the Software available to third parties via network access, cloud services, or any remote access mechanism.
+
+"Research Use" means use of the Software for academic research, educational purposes, personal learning, or scientific investigation without Commercial Use.
+
+"Contribution" means any work of authorship that is intentionally submitted to the Software by Licensee for inclusion in the Software.
+
+2. GRANT OF RIGHTS
+
+Subject to the terms and conditions of this License, Licensor hereby grants to Licensee a worldwide, royalty-free, non-exclusive, non-transferable license to:
+
+a) View, download, and study the source code of the Software;
+b) Use the Software for Research Use only;
+c) Create derivative works solely for Research Use;
+d) Distribute unmodified copies of the Software solely for Research Use, provided that:
+   - All copyright notices and this License are preserved
+   - Recipients are notified that the Software is subject to this License
+   - No Commercial Use, Competitive Use, or Hosting Use is permitted
+
+3. RESTRICTIONS
+
+Licensee may NOT:
+
+a) Use the Software for Commercial Use without obtaining a separate commercial license from Licensor;
+b) Use the Software for Competitive Use;
+c) Use the Software for Hosting Use without explicit written permission from Licensor;
+d) Remove or modify any copyright notices, license terms, or attribution requirements;
+e) Use the Software in any manner that violates applicable laws or regulations;
+f) Use the Software in connection with:
+   - Autonomous weapons systems or military applications designed to cause harm
+   - Mass surveillance or privacy-invasive monitoring systems
+   - Unlawful biological or chemical engineering
+   - Any activity that could reasonably be expected to cause physical or psychological harm
+
+4. ATTRIBUTION REQUIREMENTS
+
+Any use of the Software must include:
+a) Prominent attribution to "I-m-A-g-I-n-E A-G-I Project" in any user-facing materials;
+b) A link to the original repository (https://github.com/I-m-A-g-I-n-E/A-G-I);
+c) Preservation of all copyright notices and license information.
+
+5. CONTRIBUTIONS AND CONTRIBUTOR LICENSE AGREEMENT
+
+All Contributions to the Software require acceptance of the Contributor License Agreement (CLA) as specified in CLA.md. By submitting a Contribution, Licensee agrees to grant Licensor broad rights including but not limited to the right to use, modify, distribute, and relicense the Contribution under any license terms.
+
+6. PATENT GRANT
+
+Subject to the terms of this License, Licensor grants Licensee a conditional patent license to make, use, and distribute the Software solely for Research Use. This patent grant:
+a) Is defensive in nature and terminates immediately if Licensee initiates patent litigation against Licensor or any other party regarding the Software;
+b) Does not extend to Commercial Use, Competitive Use, or Hosting Use;
+c) May be revoked by Licensor with 30 days written notice.
+
+7. TRADEMARK RIGHTS
+
+This License does not grant permission to use trade names, trademarks, service marks, or product names of Licensor, except as required for reasonable and customary attribution as described in Section 4. See TRADEMARKS.md for detailed trademark usage guidelines.
+
+8. DISCLAIMER OF WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. LICENSOR MAKES NO WARRANTIES REGARDING THE ACCURACY, COMPLETENESS, OR RELIABILITY OF THE SOFTWARE.
+
+9. LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, INCLUDING BUT NOT LIMITED TO DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
+
+10. AUDIT RIGHTS
+
+Licensor reserves the right to audit Licensee's use of the Software to ensure compliance with this License. Licensee agrees to cooperate with reasonable audit requests and provide necessary documentation within 30 days of written notice.
+
+11. TERMINATION AND RELICENSING
+
+a) This License terminates automatically upon any breach of its terms by Licensee.
+b) Licensor may terminate this License or modify its terms with 60 days written notice.
+c) Licensor reserves the right to relicense the Software under different terms at any time with 60 days notice to existing licensees.
+d) Upon termination, Licensee must cease all use of the Software and destroy all copies.
+
+12. FUTURE LICENSING
+
+Licensor may, at its sole discretion, release portions of the Software under alternative open-source licenses after a time delay. Such future licensing does not affect the rights and obligations under this License for the current version.
+
+13. GOVERNING LAW
+
+This License shall be governed by and construed in accordance with the laws of Delaware, United States, without regard to conflict of law principles. Any disputes arising under this License shall be subject to the exclusive jurisdiction of the courts of Delaware.
+
+14. ENTIRE AGREEMENT
+
+This License constitutes the entire agreement between the parties regarding the Software and supersedes all prior or contemporaneous communications and proposals relating to the Software.
+
+15. CONTACT FOR COMMERCIAL LICENSING
+
+For Commercial Use, Competitive Use, Hosting Use, or custom licensing arrangements, contact:
+- Repository: https://github.com/I-m-A-g-I-n-E/A-G-I
+- Commercial Licensing: See repository documentation for current contact information
+
+---
+
+This license is effective as of the date first used and remains in effect until terminated in accordance with its terms.
+
+For questions about this license, see CONTRIBUTING.md or contact the maintainers through the repository's official channels.

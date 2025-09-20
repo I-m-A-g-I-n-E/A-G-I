@@ -243,4 +243,4 @@ python -m fractal_48.cli examples
 
 ## License
 
-Part of the A-G-I 48-Manifold system. See repository license for details.
+Part of the A-G-I 48-Manifold system. Licensed under the A-G-I Source-Available Protective License (SAPL) v1.0. See the main repository [LICENSE](../LICENSE) file for complete terms.
