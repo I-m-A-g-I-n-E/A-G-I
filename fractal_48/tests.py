@@ -156,6 +156,44 @@ def test_rendering():
     print("✓ Rendering works for all kernels")
 
 
+def test_backends():
+    """Test backend functionality and performance."""
+    print("Testing backends...")
+    
+    config = FractalConfig(width=96, height=96, max_iters=10, backend="numpy")
+    
+    # Test NumPy backend
+    frame_numpy = render_frame(config, 0)
+    assert frame_numpy.shape == (96, 96, 3)
+    assert 0 <= np.min(frame_numpy) <= np.max(frame_numpy) <= 1
+    
+    # Test Numba backend if available
+    try:
+        from .kernels_numba import NUMBA_AVAILABLE
+        if NUMBA_AVAILABLE:
+            config.backend = "numba"
+            frame_numba = render_frame(config, 0)
+            assert frame_numba.shape == (96, 96, 3)
+            assert 0 <= np.min(frame_numba) <= np.max(frame_numba) <= 1
+            
+            # Check that outputs are very similar (allowing for floating point differences)
+            diff = np.abs(frame_numpy - frame_numba)
+            max_diff = np.max(diff)
+            assert max_diff < 0.01, f"Backends differ too much: max_diff={max_diff}"
+            
+        # Test invalid backend
+        config.backend = "invalid"
+        try:
+            FractalConfig(width=96, height=96, backend="invalid")
+            assert False, "Should have raised ValueError for invalid backend"
+        except ValueError:
+            pass  # Expected
+    except ImportError:
+        pass  # Numba not available, skip test
+    
+    print("✓ Backend selection works correctly")
+
+
 def test_48_alignment():
     """Test that only 48-aligned dimensions are accepted."""
     print("Testing 48-alignment requirement...")
@@ -191,6 +229,7 @@ def run_all_tests():
     test_color_system()
     test_permutation_invertibility()
     test_rendering()
+    test_backends()
     test_48_alignment()
     
     print("=" * 50)
