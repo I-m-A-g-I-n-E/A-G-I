@@ -67,8 +67,9 @@ def palette48(n_smooth: float, phi: int, parity: int, config) -> Tuple[float, fl
     Returns:
         (r, g, b) color tuple
     """
-    # Base hue cycling with phi
-    hue = (config.base_hue + 360.0 * phi / 48) % 360.0
+    # Use cached hue table for performance
+    cache = config.get_cache()
+    hue = cache['hue_by_phi'][phi]
     
     # Base saturation and lightness from escape time
     # Map escape time to lightness with some contrast
@@ -107,9 +108,13 @@ def palette_newton(basin: int, steps: int, phi: int, parity: int, config) -> Tup
     Returns:
         (r, g, b) color tuple
     """
+    # Use cached hue table and add basin offset
+    cache = config.get_cache()
+    base_hue_from_phi = cache['hue_by_phi'][phi]
+    
     # Base hue by basin with 120° separation
     basin_hues = [0, 120, 240]  # Red, Green, Blue regions
-    base_hue = (config.base_hue + basin_hues[basin] + 360.0 * phi / 48) % 360.0
+    base_hue = (base_hue_from_phi + basin_hues[basin]) % 360.0
     
     # Lightness based on convergence speed
     if steps >= config.max_iters:

@@ -16,7 +16,7 @@ from typing import Tuple
 
 from .config import FractalConfig
 from .render import render_frame, render_loop, benchmark_render_performance
-from .export import export_complete_render, validate_exports
+from .export import export_complete_render, validate_exports, ExportConfig
 from .provenance import load_provenance, config_from_provenance, verify_reproducibility
 
 
@@ -47,10 +47,17 @@ def cli():
 @click.option('--animate/--no-animate', default=False, help='Generate 48-frame animation')
 @click.option('--out', type=str, default='fractal_48_output', help='Output path (without extension)')
 @click.option('--benchmark/--no-benchmark', default=False, help='Run performance benchmark')
+# Performance flags
+@click.option('--png-only', is_flag=True, help='Export PNG only (skip GIF/MP4)')
+@click.option('--no-gif', is_flag=True, help='Skip GIF export')  
+@click.option('--no-mp4', is_flag=True, help='Skip MP4 export')
+@click.option('--checksum', type=click.Choice(['none', 'first', 'all']), default='first',
+              help='Checksum policy: none=no checksums, first=first frame only, all=all frames')
 def render(kernel: str, width: int, height: int, center: Tuple[float, float],
           scale: float, rotation: float, iters: int, bailout: float,
           julia_r: float, julia_theta: float, palette: str, base_hue: float,
-          delta_s: float, delta_l: float, animate: bool, out: str, benchmark: bool):
+          delta_s: float, delta_l: float, animate: bool, out: str, benchmark: bool,
+          png_only: bool, no_gif: bool, no_mp4: bool, checksum: str):
     """Render fractal with specified parameters."""
     
     try:
@@ -98,9 +105,26 @@ def render(kernel: str, width: int, height: int, center: Tuple[float, float],
         
         click.echo(f"Rendering completed in {render_time:.2f}s")
         
+        # Create export configuration
+        export_config = ExportConfig(
+            png_only=png_only,
+            no_gif=no_gif,
+            no_mp4=no_mp4,
+            checksum=checksum
+        )
+        
+        # Show performance mode status
+        if export_config.perf_mode:
+            perf_flags = []
+            if png_only: perf_flags.append("png-only")
+            if no_gif: perf_flags.append("no-gif")
+            if no_mp4: perf_flags.append("no-mp4")
+            if checksum != "all": perf_flags.append(f"checksum={checksum}")
+            click.echo(f"Performance mode: {', '.join(perf_flags)}")
+        
         # Export results
         click.echo("Exporting files...")
-        exports = export_complete_render(frames, config, render_time)
+        exports = export_complete_render(frames, config, render_time, export_config)
         
         # Validate exports
         validation = validate_exports(exports, config)

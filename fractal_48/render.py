@@ -28,17 +28,11 @@ def render_frame(config: FractalConfig, frame_idx: int = 0) -> np.ndarray:
     H, W = config.height, config.width
     img = np.zeros((H, W, 3), dtype=np.float32)
     
-    # Pre-compute coordinate mappings for efficiency
-    phi_map = phi_field(W, H)
-    parity_map = keven_kodd_mask(W, H)
-    
-    # Compute complex coordinates for all pixels
-    y_coords, x_coords = np.mgrid[0:H, 0:W]
-    complex_coords = np.zeros((H, W), dtype=complex)
-    
-    for y in range(H):
-        for x in range(W):
-            complex_coords[y, x] = config.pixel_to_complex(x, y)
+    # Use cached invariant maps for performance
+    cache = config.get_cache()
+    phi_map = cache['phi_map']
+    parity_map = cache['parity_map']
+    complex_coords = cache['complex_coords']
     
     # Render based on kernel type
     if config.kernel == "mandelbrot":
@@ -63,14 +57,18 @@ def _render_mandelbrot(complex_coords: np.ndarray, phi_map: np.ndarray,
     H, W = complex_coords.shape
     img = np.zeros((H, W, 3), dtype=np.float32)
     
+    # Get cached iteration map
+    cache = config.get_cache()
+    iters_map = cache['iters_map']
+    
     for y in range(H):
         for x in range(W):
             c = complex_coords[y, x]
             phi = phi_map[y, x]
             parity = int(parity_map[y, x])
             
-            # Vary iterations based on phi
-            iters = iters_for_phi(phi, config.max_iters)
+            # Use cached iterations based on phi
+            iters = iters_map[y, x]
             
             # Compute Mandelbrot iteration
             n, z = mandelbrot(c, iters, config.bailout)
@@ -91,6 +89,10 @@ def _render_julia(complex_coords: np.ndarray, phi_map: np.ndarray,
     H, W = complex_coords.shape
     img = np.zeros((H, W, 3), dtype=np.float32)
     
+    # Get cached iteration map
+    cache = config.get_cache()
+    iters_map = cache['iters_map']
+    
     for y in range(H):
         for x in range(W):
             z0 = complex_coords[y, x]
@@ -101,8 +103,8 @@ def _render_julia(complex_coords: np.ndarray, phi_map: np.ndarray,
             frame_theta = 2 * math.pi * frame_idx / config.loop_frames
             c = cphi(phi, config.julia_r, config.julia_theta + frame_theta)
             
-            # Vary iterations based on phi
-            iters = iters_for_phi(phi, config.max_iters)
+            # Use cached iterations based on phi
+            iters = iters_map[y, x]
             
             # Compute Julia iteration
             n, z = julia(z0, c, iters, config.bailout)
@@ -123,14 +125,18 @@ def _render_newton(complex_coords: np.ndarray, phi_map: np.ndarray,
     H, W = complex_coords.shape
     img = np.zeros((H, W, 3), dtype=np.float32)
     
+    # Get cached iteration map
+    cache = config.get_cache()
+    iters_map = cache['iters_map']
+    
     for y in range(H):
         for x in range(W):
             z0 = complex_coords[y, x]
             phi = phi_map[y, x]
             parity = int(parity_map[y, x])
             
-            # Vary iterations based on phi
-            iters = iters_for_phi(phi, config.max_iters)
+            # Use cached iterations based on phi
+            iters = iters_map[y, x]
             
             # Compute Newton iteration
             steps, basin = newton3(z0, iters, eps=1e-6)
