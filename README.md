@@ -86,8 +86,8 @@ Recommendations:
 - `bio/composer.py` — `HarmonicPropagator`: map an AA sequence to windowed 48D Composition Vectors.
 - `bio/conductor.py` — `Conductor`: map composition to torsions, build N–CA–C backbone, QC, and refinement.
 - `bio/sonifier.py` — `TrinitySonifier`: 3-channel audio from composition (L/R parity, C center/kore).
-- `compose_protein.py` — CLI for ensemble composition and saving mean/certainty.
-- `generate_structure.py` — CLI for backbone generation (+ optional refinement + optional sonification).
+- `scripts/compose_protein.py` — CLI for ensemble composition and saving mean/certainty.
+- `scripts/generate_structure.py` — CLI for backbone generation (+ optional refinement + optional sonification).
 - `live_audition.py` — Interactive loop to compose/conduct/refine/sonify.
 - `immunity.py` — Immune-system analog, CLI demos for synthetic and real PDB QA.
 - `scripts/` — CLI tools for protein composition, structure generation, and batch processing.
@@ -141,24 +141,24 @@ python3 agi.py immunity -- --help
 
 ### 1) Compose → Structure → Sonify (scripts)
 
-Use the provided CLIs to go end-to-end. Ensure your sequence has length ≥ 48.
+Use the provided CLIs (located in `scripts/`) to go end-to-end. Ensure your sequence has length ≥ 48.
 
 ```bash
 # Phase 2: Compose an AA sequence into windowed 48D Composition Vectors
-python3 compose_protein.py \
+python3 scripts/compose_protein.py \
   --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRGG \
   --samples 8 --variability 0.5 --seed 42 --window-jitter \
   --save-prefix outputs/ubiquitin_ensemble --save-format npy
 
 # Phase 3: Generate a 3D backbone (N–CA–C) and QC; optionally refine
-python3 generate_structure.py \
+python3 scripts/generate_structure.py \
   --input-prefix outputs/ubiquitin_ensemble \
   --output-pdb outputs/ubiquitin_fold_full.pdb \
   --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRLRGG \
   --refine --refine-iters 300 --refine-step 2.0 --refine-seed 123
 
 # Optional: 3-channel sonification directly from generate_structure
-python3 generate_structure.py \
+python3 scripts/generate_structure.py \
   --input-prefix outputs/ubiquitin_ensemble \
   --output-pdb outputs/ubiquitin_fold_full.pdb \
   --sequence MQIFVKTLTGKTITLEVEPSDTIENVKAKIQDKEGIPPDQQRLIFAGKQLEDGRTLSDYNIQKESTLHLVLRLRLRGG \
@@ -166,7 +166,7 @@ python3 generate_structure.py \
   --bpm 96 --stride-ticks 16 --amplify 1.0 --wc-kore 1.5 --wc-cert 1.0 --wc-diss 2.5
 
 # Or use the helper to export separate L/C/R stems
-python3 sonify_once.py outputs/ubiquitin_ensemble outputs/ubi_audio
+python3 scripts/sonify_once.py outputs/ubiquitin_ensemble outputs/ubi_audio
 ```
 
 Artifacts:
@@ -252,7 +252,7 @@ python3 fractal48_torch.py
 Run a fast subset of tests that highlight exact transfer vs transform:
 
 ```bash
-python3 test_fractal48.py quick
+python3 tests/test_fractal48.py quick
 ```
 
 ## Programmatic usage
