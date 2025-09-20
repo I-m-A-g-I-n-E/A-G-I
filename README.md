@@ -74,7 +74,12 @@ Recommendations:
 - `generate_structure.py` — CLI for backbone generation (+ optional refinement + optional sonification).
 - `live_audition.py` — Interactive loop to compose/conduct/refine/sonify.
 - `immunity.py` — Immune-system analog, CLI demos for synthetic and real PDB QA.
+- `scripts/` — CLI tools for protein composition, structure generation, and batch processing.
 - `tests/` — See `test_fractal48.py`, `test_immunity_unit.py`, `test_immunity_randomized.py` for properties and robustness.
+- `docs/` — Documentation, proposals, research notes, and web assets.
+- `demos/` — Demonstration scripts for fractal visualization and navigation.
+- `tools/` — Analysis utilities for metrics and batch processing.
+- `experimental/` — Research modules exploring gesture-based computing and linguistic processing.
 
 ## Quick starts
 
