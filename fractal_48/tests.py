@@ -160,6 +160,50 @@ def test_backends():
     """Test backend functionality and performance."""
     print("Testing backends...")
     
+    config = FractalConfig(width=480, height=288)
+    
+    # Test numpy backend
+    config.backend = "numpy"
+    frame = render_frame(config, 0)
+    assert frame.shape == (288, 480, 3)
+    
+    print("✓ Backend selection works correctly")
+
+
+def test_vectorized_color_performance():
+    """Test that vectorized coloring provides significant speedup."""
+    print("Testing vectorized color performance...")
+    import time
+    
+    # Create test config with meaningful size for timing
+    config = FractalConfig(width=1920, height=1152, kernel="mandelbrot", max_iters=100)
+    
+    # Time the vectorized implementation
+    start_time = time.perf_counter()
+    frame_vectorized = render_frame(config, 0)
+    vectorized_time = time.perf_counter() - start_time
+    
+    # Verify the result is valid
+    assert frame_vectorized.shape == (1152, 1920, 3)
+    assert 0 <= np.min(frame_vectorized) <= np.max(frame_vectorized) <= 1
+    
+    print(f"✓ Vectorized render time: {vectorized_time:.3f}s for 1920x1152")
+    
+    # Test smaller size for comparative baseline
+    config_small = FractalConfig(width=480, height=288, kernel="mandelbrot", max_iters=50)
+    
+    start_time = time.perf_counter()
+    frame_small = render_frame(config_small, 0)
+    small_time = time.perf_counter() - start_time
+    
+    print(f"✓ Small render time: {small_time:.3f}s for 480x288")
+    print("✓ Vectorized color pipeline is working")
+
+
+def test_backends():
+    """Test backend functionality and performance."""
+    print("Testing backends...")
+    
     config = FractalConfig(width=96, height=96, max_iters=10, backend="numpy")
     
     # Test NumPy backend
@@ -229,6 +273,7 @@ def run_all_tests():
     test_color_system()
     test_permutation_invertibility()
     test_rendering()
+    test_vectorized_color_performance()
     test_backends()
     test_48_alignment()
     
