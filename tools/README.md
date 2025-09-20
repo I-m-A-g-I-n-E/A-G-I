@@ -6,7 +6,7 @@ This directory contains utility tools for analyzing and working with the 48-Mani
 
 - **`analyze_sqlite_metrics.py`** - SQLite-based metrics analyzer for protein refinement batches
   - Provides insights and analysis of metrics stored in SQLite databases
-  - Similar to `tools/analyze_metrics.py` but works directly with SQLite
+  - Works directly with SQLite databases for metrics analysis
 
 ## Usage
 
