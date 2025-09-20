@@ -6,6 +6,7 @@ import numpy as np
 from typing import List, Optional
 import os
 import json
+from dataclasses import dataclass
 
 try:
     from PIL import Image
@@ -23,6 +24,20 @@ except ImportError:
 
 from .config import FractalConfig
 from .provenance import create_provenance, save_provenance
+
+
+@dataclass
+class ExportConfig:
+    """Configuration for export performance options."""
+    png_only: bool = False
+    no_gif: bool = False
+    no_mp4: bool = False
+    checksum: str = "first"  # "none", "first", "all"
+    
+    @property
+    def perf_mode(self) -> bool:
+        """True if any performance optimizations are enabled."""
+        return self.png_only or self.no_gif or self.no_mp4 or self.checksum != "all"
 
 
 def save_frame_png(frame: np.ndarray, output_path: str, 
@@ -137,7 +152,7 @@ def save_animation_mp4(frames: List[np.ndarray], output_path: str,
 
 
 def export_complete_render(frames: List[np.ndarray], config: FractalConfig,
-                          render_time: float = 0.0) -> dict:
+                          render_time: float = 0.0, export_config: Optional[ExportConfig] = None) -> dict:
     """
     Export complete render with all formats and provenance.
     
@@ -145,12 +160,34 @@ def export_complete_render(frames: List[np.ndarray], config: FractalConfig,
         frames: Rendered frames
         config: Fractal configuration
         render_time: Total rendering time
+        export_config: Export performance options
         
     Returns:
         Dictionary with paths to all exported files
     """
-    # Create provenance record
-    provenance = create_provenance(config, render_time, frames)
+    if export_config is None:
+        export_config = ExportConfig()
+    
+    # Determine which frames to include in checksums based on checksum policy
+    checksum_frames = None
+    if export_config.checksum == "all":
+        checksum_frames = frames
+    elif export_config.checksum == "first":
+        checksum_frames = [frames[0]] if frames else []
+    # else checksum == "none": checksum_frames remains None
+    
+    # Create provenance record with performance mode info
+    provenance = create_provenance(config, render_time, checksum_frames)
+    
+    # Add performance mode metadata
+    if export_config.perf_mode:
+        provenance['performance_mode'] = {
+            'enabled': True,
+            'png_only': export_config.png_only,
+            'no_gif': export_config.no_gif, 
+            'no_mp4': export_config.no_mp4,
+            'checksum_policy': export_config.checksum
+        }
     
     # Create output directory if needed
     output_dir = os.path.dirname(config.output_path)
@@ -173,19 +210,21 @@ def export_complete_render(frames: List[np.ndarray], config: FractalConfig,
         png_path = save_frame_png(frames[0], f"{config.output_path}_frame_0", config, provenance)
         exports['reference_png'] = png_path
         
-        # Save animation as GIF
-        try:
-            gif_path = save_animation_gif(frames, config.output_path, config, duration=2.0)
-            exports['gif'] = gif_path
-        except ImportError as e:
-            print(f"Warning: Could not export GIF: {e}")
+        # Save animation as GIF (unless disabled)
+        if not export_config.png_only and not export_config.no_gif:
+            try:
+                gif_path = save_animation_gif(frames, config.output_path, config, duration=2.0)
+                exports['gif'] = gif_path
+            except ImportError as e:
+                print(f"Warning: Could not export GIF: {e}")
         
-        # Save animation as MP4
-        try:
-            mp4_path = save_animation_mp4(frames, config.output_path, config, fps=24.0)
-            exports['mp4'] = mp4_path
-        except ImportError as e:
-            print(f"Warning: Could not export MP4: {e}")
+        # Save animation as MP4 (unless disabled)
+        if not export_config.png_only and not export_config.no_mp4:
+            try:
+                mp4_path = save_animation_mp4(frames, config.output_path, config, fps=24.0)
+                exports['mp4'] = mp4_path
+            except ImportError as e:
+                print(f"Warning: Could not export MP4: {e}")
     
     return exports
 
